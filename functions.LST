@@ -1,0 +1,489 @@
+C51 COMPILER V7.05   FUNCTIONS                                                             10/15/2019 17:31:54 PAGE 1   
+
+
+C51 COMPILER V7.05, COMPILATION OF MODULE FUNCTIONS
+OBJECT MODULE PLACED IN functions.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE functions.h DB OE BR INCDIR(C:\SiLabs\MCU\Inc)
+
+stmt level    source
+
+   1          //FUNCTIONS.H
+   2          
+   3          #ifndef _FUNCTIONS__H
+   4          #define _FUNCTIONS__H
+   5          
+   6          #include <c8051f120.h>
+   7          #include <stdio.h>
+   8          #include <string.h>
+   9          #include <intrins.h>
+  10          
+  11          #define EXTERNAL_CLK     //TESTADC
+  12          #define EXTERNAL_ADC     
+  13          
+  14          //#define INTERNAL_ADC            
+  15          
+  16          
+  17          
+  18          
+  19          
+  20          
+  21          
+  22          
+  23          
+  24          
+  25          #define NO_OF_SAMPLES_FOR_AVERAGING      8
+  26          #define NACK                    "$000001NN"
+  27          #define ACK                             "$000001AA"
+  28          #define TESTOK          "$000002TC\x17"
+  29          #define TESTSTARTED     "$000002TS\x07"
+  30          
+  31          
+  32          #define ENABLE_INT0_INTERRUPT()         {\
+  33                                                                                          IT0             =       1;\
+  34                                                                                          EX0             =       1;\
+  35                                                                          }
+  36          
+  37          
+  38          #define DISABLE_INT0_INTERRUPT()        {\
+  39                                                                                          IT0 = 0;\
+  40                                                                                          EX0 = 0;\
+  41                                                                                  }       
+  42          
+  43          
+  44          #define ADC_MAX_BUFF_SIZE               1536
+  45          #define ADC_NO_OF_CHANNELS              4
+  46          #define EACH_CHANNEL_BYTES              2
+  47          #define FLASH_PAGE_SIZE                 256
+  48          
+  49          #define PAGE_SIZE_WRITE                 ((FLASH_PAGE_SIZE)/(ADC_NO_OF_CHANNELS*EACH_CHANNEL_BYTES))
+  50          
+  51          #define CHANNEL_POSITIVE_SCALE                  4.33//4.2886   //4.3886         // Modified on 11-01-06 for +/- analog values 
+  52          #define CHANNEL_NEGATIVE_SCALE                  4.32296         // Modified on 11-01-06 for +/- analog values    
+  53          
+  54          #define CHANNEL_NEGATIVE_OFFSET         2.8543      // Modified on 11-01-06 for +/- analog values 
+  55          #define CHANNEL_POSITIVE_OFFSET        0.54 //0.54 Modified on 05-10-2019 by kss      // Modified on 11-01
+C51 COMPILER V7.05   FUNCTIONS                                                             10/15/2019 17:31:54 PAGE 2   
+
+             --06 for +/- analog values 
+  56          
+  57          
+  58          //#define CHANNEL_0_POSITIVE_SCALE                      4.33//4.2886   //4.3886         // Modified on 11-01-06 for +/- analog valu
+             -es 
+  59          //#define CHANNEL_0_NEGATIVE_SCALE                      4.32296         // Modified on 11-01-06 for +/- analog values    
+  60          
+  61          //#define CHANNEL_0_NEGATIVE_OFFSET         2.8543      // Modified on 11-01-06 for +/- analog values 
+  62          //#define CHANNEL_0_POSITIVE_OFFSET        0.40 //0.54 Modified on 05-10-2019 by kss      // Modified on 1
+             -1-01-06 for +/- analog values 
+  63          
+  64          
+  65          
+  66          //#define CHANNEL_1_POSITIVE_SCALE                      4.33//4.2886   //4.3886         // Modified on 11-01-06 for +/- analog valu
+             -es 
+  67          //#define CHANNEL_1_NEGATIVE_SCALE                      4.32296         // Modified on 11-01-06 for +/- analog values    
+  68          
+  69          //#define CHANNEL_1_NEGATIVE_OFFSET         2.8543      // Modified on 11-01-06 for +/- analog values 
+  70          //#define CHANNEL_1_POSITIVE_OFFSET        0.40 //0.54 Modified on 05-10-2019 by kss      // Modified on 1
+             -1-01-06 for +/- analog values 
+  71          
+  72          
+  73          //#define CHANNEL_2_POSITIVE_SCALE                      4.33//4.2886   //4.3886         // Modified on 11-01-06 for +/- analog valu
+             -es 
+  74          //#define CHANNEL_2_NEGATIVE_SCALE                      4.32296         // Modified on 11-01-06 for +/- analog values    
+  75          
+  76          //#define CHANNEL_2_NEGATIVE_OFFSET         2.8543      // Modified on 11-01-06 for +/- analog values 
+  77          //#define CHANNEL_2_POSITIVE_OFFSET        0.40 //0.54 Modified on 05-10-2019 by kss      // Modified on 1
+             -1-01-06 for +/- analog values 
+  78          
+  79          
+  80          //#define CHANNEL_3_POSITIVE_SCALE                      4.33//4.2886   //4.3886         // Modified on 11-01-06 for +/- analog valu
+             -es 
+  81          //#define CHANNEL_3_NEGATIVE_SCALE                      4.32296         // Modified on 11-01-06 for +/- analog values    
+  82          
+  83          //#define CHANNEL_3_NEGATIVE_OFFSET         2.8543      // Modified on 11-01-06 for +/- analog values 
+  84          //#define CHANNEL_3_POSITIVE_OFFSET        0.40 //0.54 Modified on 05-10-2019 by kss      // Modified on 1
+             -1-01-06 for +/- analog values 
+  85          
+  86          
+  87          
+  88          
+  89          #define RELAY_TOLERENCE                 10
+  90          
+  91          //#define FILE_START_ADDRESS 0x000000L
+  92          #define FILE_NUMBER(filename) ((filename-1)* 0x1FFFFL+(filename-1))
+  93          
+  94          #define DATA_RECORD_TARGET_FLASH_MEMORY         0x10000L //bank 2
+  95          #define DATA_RECORD_ADDRESS(testnumber)         ( (testnumber-1)*1024 + DATA_RECORD_TARGET_FLASH_MEMORY )
+  96          
+  97          //*************************************************************************
+  98          
+  99          #define RELAY_DATA_FLASH_MEMORY         0xC000L //
+ 100          #define RELAY_DATA_ADDRESS(relaysetnumber)              ( (relaysetnumber-1)*1024 + RELAY_DATA_FLASH_MEMORY )
+ 101          
+ 102          
+ 103          //**************************************************************************
+ 104          
+ 105          #define ACTIVE_BATTERIES_INFO           0xEC00
+ 106          #define ACTIVE_BATTERY1_INFO            ACTIVE_BATTERIES_INFO
+ 107          #define ACTIVE_BATTERY2_INFO            ACTIVE_BATTERIES_INFO+9
+ 108          
+C51 COMPILER V7.05   FUNCTIONS                                                             10/15/2019 17:31:54 PAGE 3   
+
+ 109                  
+ 110          
+ 111          
+ 112          #define SYSTEMCLOCKK                            22118400
+ 113          
+ 114          #define SAMPLE_RATE                             100000        // Sample frequency in Hz
+ 115          //#define SAMPLE_RATE                           50000        // Sample frequency in Hz
+ 116          
+ 117          
+ 118          #define ADC_RESOLUTION                  0.00003662109375  //16 bit resolution formulae 
+ 119          #define ADC_12BIT_RESOLUTION            0.0005859375
+ 120          #define EXT_ADC_TEN_VOLTS                       0.00030517578125  // 16 bit resolution
+ 121          
+ 122          
+ 123          
+ 124          #define ADC_RES_TEN_VOLTS                       0.00030517578125        //TESTADC
+ 125          
+ 126          
+ 127          #define BYTE(x) (1<<(x))                                                //TESTADC
+ 128          #define SETBIT(p,x) (p |= BYTE(x))                              //TESTADC
+ 129          #define CLEARBIT(p,x) (p &= ~BYTE(x))                   //TESTADC
+ 130          
+ 131          
+ 132          
+ 133          
+ 134          #define ENABLE_DISABLE_DEBUGGING        0   //1 FOR ENABLE 0- DISBLE
+ 135          #define MAX_COLUMNS                             20
+ 136          
+ 137          #define K1_RELAY                                        31
+ 138          #define K2_RELAY                                        32
+ 139          #define K3_RELAY                                        33
+ 140          
+ 141          #define IGN_DURATION                            34
+ 142          
+ 143          #define START_DURATION                          35
+ 144          #define DURATION                                        36
+ 145          #define COUNT                                           37
+ 146          #define INTERVAL                                        38
+ 147          #define TIME_SETTINGS                           39
+ 148          #define DATE_SETTINGS                           40
+ 149          #define RELAY_SETTINGS                          41
+ 150          #define IGNITION                                        42
+ 151          #define K2_RELAY_STOP                           43
+ 152          #define K3_RELAY_STOP                           44
+ 153          #define TEST_DURATION                           45
+ 154          #define K1_RELAY_STOP                           46
+ 155          #define BATTERY_SERIAL                          47
+ 156          #define SECTION_SETTINGS                48
+ 157          
+ 158          /*
+ 159          #define LCD_CLEAR_DISPLAY                       0x01
+ 160          #define LCD_CURSOR_ON                           0x0E
+ 161          #define LCD_CURSOR_OFF                          0x0C
+ 162          #define LCD_BLINKING_ON                         0x0F
+ 163          #define LCD_BLINKING_OFF                        0x0C
+ 164          #define LCD_CURSOR_HOME                         0x02
+ 165          #define LCD_CURSOR_LEFT                         0x10
+ 166          #define LCD_CURSOR_RIGHT                        0x14
+ 167          */
+ 168          
+ 169          #define LCDSOM                                  0xfe
+ 170          #define LCDCUR                                  0x47
+C51 COMPILER V7.05   FUNCTIONS                                                             10/15/2019 17:31:54 PAGE 4   
+
+ 171          #define LCD_BLINK_OFF                   0x54
+ 172          
+ 173          #define LCD_CLEAR_DISPLAY                       0x58
+ 174          #define LCD_CURSOR_ON                           0x4A
+ 175          #define LCD_CURSOR_OFF                          0x4B
+ 176          #define LCD_BLINKING_ON                         0x53
+ 177          #define LCD_BLINKING_OFF                        0x54
+ 178          #define LCD_CURSOR_HOME                         0x48
+ 179          #define LCD_CURSOR_LEFT                         0x4C
+ 180          #define LCD_CURSOR_RIGHT                        0x4D
+ 181          #define LCD_BACK_LIGHT_ON           0x42
+ 182          
+ 183          
+ 184          
+ 185          
+ 186          
+ 187          
+ 188          
+ 189          
+ 190          #define TYPE_307                                        1
+ 191          #define TYPE_417                                        0
+ 192          
+ 193          #define FIRST_KEY                                       1
+ 194          #define SECOND_KEY                                      2
+ 195          #define THIRD_KEY                                       3
+ 196          #define FOURTH_KEY                                      4
+ 197          #define FIFTH_KEY                                       5
+ 198          #define SIXTH_KEY                                       6
+ 199          #define SEVENTH_KEY                                     7
+ 200          #define EIGHTH_KEY                                      8
+ 201          #define NINTH_KEY                                       9
+ 202          #define ZERO_KEY                                        10
+ 203          #define ENTER_KEY                                       11
+ 204          #define LEFT_ARROW_KEY                          12
+ 205          #define RIGHT_ARROW_KEY                         13
+ 206          #define CLEAR_KEY                                       14
+ 207          #define DECIMAL_POINT_KEY                       15
+ 208          #define RESET_KEY                                       16      
+ 209          
+ 210          
+ 211          #define MAX_RECORDS                                     50
+ 212          
+ 213          
+ 214          #define MIN_K1_START_TIME                       0
+ 215          #define MAX_K1_START_TIME                       120000
+ 216          #define MIN_K1_STOP_TIME                        00
+ 217          #define MAX_K1_STOP_TIME                        120000
+ 218          
+ 219          #define MIN_K2_START_TIME                       0
+ 220          #define MAX_K2_START_TIME                       120000
+ 221          #define MIN_K2_STOP_TIME                        00
+ 222          #define MAX_K2_STOP_TIME                        120000
+ 223          
+ 224          #define MIN_K3_START_TIME                       0
+ 225          #define MAX_K3_START_TIME                       120000
+ 226          #define MIN_K3_STOP_TIME                        00
+ 227          #define MAX_K3_STOP_TIME                        120000
+ 228          
+ 229          #define MIN_PR_START_TIME                       1
+ 230          #define MAX_PR_START_TIME                       120000
+ 231          #define MIN_PR_INTERVAL_TIME            00
+ 232          #define MAX_PR_INTERVAL_TIME            120000
+C51 COMPILER V7.05   FUNCTIONS                                                             10/15/2019 17:31:54 PAGE 5   
+
+ 233          
+ 234          #define MIN_PR_DURATION                         1
+ 235          #define MAX_PR_DURATION                         12000
+ 236          #define MIN_PR_COUNT_TIME                       00
+ 237          #define MAX_PR_COUNT_TIME                       10
+ 238          
+ 239          
+ 240          #define OUTPUT_DATA             P2
+ 241          #define INPUT_DATA_LSB          P4
+ 242          #define INPUT_DATA_MSB          P5
+ 243          #define KEYPORT                         P6
+ 244          #define LCD_DATA                        P7
+ 245          
+ 246          //sbit STROBE                           = P1^2;
+ 247          //sbit PRINTER_BUSY             = P1^3;
+ 248          
+ 249          sbit START_SWITCH                       = P1^2;         //pull up mode
+ 250          sbit OUTPUT_LATCH_ENABLE    = P1^6;     
+ 251          sbit CE                                         = P1^7;
+ 252          
+ 253          sbit IGNITER_ENABLE                     = P1^4;
+ 254          
+ 255          
+ 256          sbit READY_LED                          = P2^0;         //open drain mode
+ 257          sbit DAQ_LED                            = P2^1;         //open drain mode
+ 258          sbit SOLID_STATE_RELAY          = P2^2;         //Igniter
+ 259          sbit PULSE_RELAY                        = P2^3;         //SPDT
+ 260          sbit K1RELAY                            = P2^4;         //DPDTsbit PULSE_RELAY                  = P2^3; //SPDT
+ 261          sbit K2RELAY                            = P2^5;         //DPDT
+ 262          sbit K3RELAY                            = P2^6;         //DPDT
+ 263          
+ 264          sbit SPI_WP_FLASH1              = P3^0;
+ 265          sbit SPI_HOLD_FLASH1            = P3^1;
+ 266          sbit SPI_WP_FLASH2              = P3^2; 
+ 267          sbit SPI_HOLD_FLASH2            = P3^3;
+ 268          sbit RS_485_CTRL                = P3^4;
+ 269          sbit LCD_E                              = P3^5;
+ 270          sbit LCD_RS                     = P3^6;
+ 271          sbit LCD_RW                     = P3^7;
+ 272          
+ 273          sbit READ_CONVERT                       = P4^0;         //Adc start of conversion
+ 274          sbit DATACLK                            = P4^1;         //Data clock reading the adc data
+ 275          sbit DATA                                       = P4^2;         //Adc data outputted on this pin with respect to clock
+ 276          sbit ADC_BUSY                           = P4^3;         //Adc end of conversion 
+ 277          sbit A0                                         = P4^4;         //channel selection 1
+ 278          sbit A1                                         = P4^5;         //channel selection 2
+ 279                  
+ 280          sbit ROW1                                       = P6^0;
+ 281          sbit ROW2                                       = P6^1;
+ 282          sbit ROW3                                       = P6^2;
+ 283          sbit ROW4                                       = P6^3;
+ 284          sbit COLUMN1                            = P6^4;
+ 285          sbit COLUMN2                            = P6^5;
+ 286          sbit COLUMN3                            = P6^6;
+ 287          sbit COLUMN4                            = P6^7;
+ 288          
+ 289          sbit LCD_D0                             = P7^0;
+ 290          sbit LCD_D1                             = P7^1;
+ 291          sbit LCD_D2                             = P7^2;
+ 292          sbit LCD_D3                             = P7^3;
+ 293          sbit LCD_D4                             = P7^4;
+ 294          sbit LCD_D5                             = P7^5;
+C51 COMPILER V7.05   FUNCTIONS                                                             10/15/2019 17:31:54 PAGE 6   
+
+ 295          sbit LCD_D6                             = P7^6;
+ 296          sbit LCD_D7                             = P7^7;
+ 297          
+ 298          sbit CHIP3_ENABLE                       = P2^5;
+ 299          
+ 300          
+ 301          
+ 302          
+ 303          //extern void Enable_ADC();
+ 304          //extern void ADCInit (void);
+ 305          //extern void TIMER3_Init (int counts);
+ 306          
+ 307          extern void SignOnMessage();
+ 308          extern void LCDPutString(unsigned char address,unsigned char *string);
+ 309          extern void LCDPutChar(unsigned char byte);
+ 310          extern void WaitLCDBusy();
+ 311          extern void LCD_Delay(unsigned int count);
+ 312          extern void LCDInit(void);
+ 313          extern void LCDDelayms(unsigned char count);
+ 314          extern void LCDCmdWrite(unsigned char cmd);
+ 315          extern void LCDGoToXY(unsigned char Colum,unsigned char Row);
+ 316          
+ 317          extern void ConfigWatchDogTimer();
+ 318          extern void SYSCLKInit(void);
+ 319          extern void PortIOInit (void);
+ 320          
+ 321          extern void SendByteToRTC(unsigned char ByteAddress,unsigned char OutByte);
+ 322          extern unsigned char RecvByteFromRTC(unsigned char ByteAddress);
+ 323          extern void SMBInit(void);
+ 324          extern void GetTime_Date(struct time *Time);
+ 325          
+ 326          extern void Init_SPI( void );
+ 327          extern void UART1_Init(void);
+ 328          extern void UART0_Init();
+ 329          
+ 330          extern char Read_Device_Id_Status(unsigned char Chip_Number);
+ 331          extern bit EnableDisableChipSelect(unsigned char ChipSelect,bit SetValue);
+ 332          extern bit ReadStatusRegister(unsigned char);
+ 333          extern void Timer0_us (unsigned us);
+ 334          extern char FlashBulkErase(unsigned char Chip_Number);
+ 335          extern void MainMenu();
+ 336          
+ 337          extern void PutStringOnRS232(unsigned char *String);
+ 338          extern void TransmitCharOnRS232(unsigned char value);
+ 339          extern void TransmitCharRS485(unsigned char value);
+ 340          void Put_String_UART1(unsigned char *String);
+ 341          extern char ScanKeyPad();
+ 342          extern unsigned int ReadInputPort();
+ 343          extern void SendOutPutPort(unsigned char Data);
+ 344          
+ 345          extern void Delayms(unsigned char count);
+ 346          extern void Delay(unsigned int count);
+ 347          void delay(unsigned int);
+ 348          void Timer4neMsecInterruptInit();
+ 349          
+ 350          bit ReadFileFromFlash(unsigned char FileName,unsigned long Length);
+ 351          bit ConfigureRTCTime();
+ 352          unsigned long WriteFiletoFlash(unsigned long,unsigned char);
+ 353          char ClearRecords(unsigned char FileName,unsigned char Count);
+ 354          char EraseRecords(unsigned char FileName,unsigned char Count);
+ 355          
+ 356          /**************** Internal Flash Routines*********************/
+C51 COMPILER V7.05   FUNCTIONS                                                             10/15/2019 17:31:54 PAGE 7   
+
+ 357          void FLASH_ByteWrite (unsigned long dest, char dat);
+ 358          void FLASH_Write (unsigned long dest, char* src, unsigned int numbytes);
+ 359          void FLASH_Read (unsigned long dest, char* src, unsigned int numbytes);
+ 360          void FLASH_PageErase (unsigned long addr);
+ 361          unsigned char FLASH_ByteRead (unsigned long addr);
+ 362          /*******************************************************************/
+ 363          
+ 364          char ReadDirectory();
+ 365          void CygnalInit();
+ 366          
+ 367          //void LcdInit();
+ 368          void LCDInstWrite(unsigned char instruction);
+ 369          //void LCDDataWrite(unsigned char character);
+ 370          void LCDGotoXY(unsigned char X, unsigned char Y);
+ 371          void LCDPutText(char *datastr);
+ 372          void LCDPutChar(char datachar);
+ 373          void LCDWriteLine(unsigned char LineNo, char *datastr, unsigned char Alignment);
+ 374          void LCDClearLine(unsigned char LineNo);
+ 375          void LCDCursorON();
+ 376          void LCDCursorOFF();
+ 377          
+ 378          void WelcomeScreen();
+ 379          void RecordsInformation();
+ 380          void TestConfigurations();
+ 381          void StartStopTime();
+ 382          void IntervalDuration();
+ 383          void ConnectBatteryTerminals();
+ 384          void ConnectLoads();
+ 385          void ResetToAbort();
+ 386          void TestProcessing();
+ 387          void TestCompleted();
+ 388          void RelaySelection();
+ 389          void BatterySerailNumber();
+ 390          void TestConfigurations();
+ 391          void RelaySettings();
+ 392          void IgniterSettings();
+ 393          void ConnectBatteryTerminals();
+ 394          void MainMenu();
+ 395          void DateAndTimeScreen();
+ 396          void RelaySelections();
+ 397          
+ 398          void Delayms(unsigned char count);
+ 399          void Keydelay(unsigned int count);
+ 400          
+ 401          char ScanKeyPad();
+ 402          
+ 403          void ClearAllLines();
+ 404          void NewRelayK1();
+ 405          void NewRelayK2();
+ 406          void NewRelayK3();
+ 407          void IntervalDuration();
+ 408          void delaylong(unsigned long milliseconds);
+ 409          void DisplayTime();
+ 410          unsigned int IntervalSettings(unsigned char Key);
+ 411          
+ 412          //void BatterySerialSetting(unsigned char Key);
+ 413          //char KeyReadingInfo(unsigned char Key,unsigned char CountMax);
+ 414          
+ 415          /*****************************************************************************************/
+ 416          bit DecodeCommands();
+ 417          unsigned char Checksum(unsigned char *cbuffer); 
+ 418          void PutCharOnRS232(unsigned char value);
+C51 COMPILER V7.05   FUNCTIONS                                                             10/15/2019 17:31:54 PAGE 8   
+
+ 419          void SendDataToRS232(unsigned char *TxBuffer);
+ 420          void ReadRecordLists();
+ 421          //*******************************************************************************************/
+ 422          
+ 423          void FLASH_Read ( unsigned long src, char* dest, unsigned int numbytes);
+ 424          void IntializeVariables();
+ 425          void Settings();
+ 426          
+ 427          void TestCondition_50p();
+ 428          void TestCondition_50n();
+ 429          void TestCondition_30n();
+ 430          void TestCondition_55p();
+ 431          void TestCondition_Room_Temp();
+ 432          void TestConditoion_Menu();
+ 433          void SectionSettings();
+ 434          void GetActiveBatteries();
+ 435          
+ 436          void ReadInput(unsigned char KeyValue,unsigned char CountMax);
+ 437          
+ 438          // added on 18-12-2006
+ 439          
+ 440          void Delay(unsigned int Count);
+ 441          unsigned int ReadADCData();
+ 442          
+ 443          #endif
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   ----    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

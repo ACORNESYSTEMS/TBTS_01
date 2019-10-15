@@ -1,0 +1,198 @@
+//README.TXT
+
+
+
+//P0.0	UART0_TXD
+//P0.1	UART0_RXD
+//P0.2	SPI_SCK
+//P0.3	SPI_MISO
+//P0.4	SPI_MOSI
+//P0.5	SPI_NSS
+//P0.6	I2C_SDA
+//P0.7	I2C_SCL
+//P1.0	UART1_TXD
+//P1.1	UART1_RXD
+//P1.2	N.C
+//P1.3	N.C
+//P1.4	N.C
+//P1.5	N.C
+
+
+
+
+
+
+
+Date 27/06/2006
+----------------
+1.Fetch test Data tested o.k for 2 sec  806 bytes in pc window
+2.delete test tested o.k
+3.Added Time Setting from key board error validation to do
+
+
+Date 30 june 06 12.50
+---------------------
+1.full system tested o.k
+2.added igniter button to into interrupt pin tested o.k
+
+
+Date 06July 06 4.50
+-------------------
+1.version 1.0 
+
+
+Date 11 July 4.00
+-----------------
+1.adding max and min relay settings of k1,k2,k3 and PR.
+
+
+Date 17July 064.30
+------------------
+1.added timer3 (adc )overflow time modified
+2.fifo shifted to adc interrupt location.
+
+
+Date 27 July06 12.00
+--------------------
+1.global header file is removed from project.
+2.compiler settings changed internal variable locations
+
+Date 28 July06 12.59 
+--------------------
+versiion 3.1
+modifcations:-
+
+1.Erase records changed when changing chip selections sector number storing invalid. changed
+2.Writefiletoflash changed when changing chip selections  Data record address changing to 0 that is modifed
+3.solid state relay on/off shifted to timer interrupt locations.
+
+Version 3.2
+Modifications:
+
+1.lcd display modifcations
+a.Date and time setting modification
+b.relay settings(pr,k1,k2,k3) editing modification
+
+Adding features:-
+-----------------
+1.add new battery feature
+2.add section settings
+
+
+Date 14 August 06
+-----------------
+1.Decimal point has been removed.
+
+
+Date 17 August063.45PM
+--------------------------
+1.add new battery type functionality tested o.k
+2.rename battery tested o.k
+3.delete battery tested o.k
+4.set active batteries tested o.k
+5.fetch test tested o.k
+6.Date &time settings to be imporved.
+
+
+Date 21 August06 
+----------------
+1.Date and time setting modified.
+
+
+Date 22 August 06 4.01
+----------------------
+1.system clock is changed to pll clock to 88.4mhz.
+2.K1,K2,k3 Relay settings moved to timer isr routine.
+3.pulse relay settings moved to timer isr routine.
+tested with this configuration all relays are getting activated and deactivated.
+
+
+Date 23 August 06 11.20
+-----------------------
+1.Sections settings changed to the another method.
+
+
+Date 28 August 06 10.00Am
+---------------------------
+1.removing comment code in all files.
+
+
+Date 29 August 06 6.13Pm
+-------------------------
+1.modified mmi pr,k1,k2,k3 relay settings 
+
+
+Date 31 August 06 12.27PM
+-------------------------
+1.While adding new battery,the new battery setting intialized to zero.
+2.While renaming the active battery ,active battery not getting modified.
+3.renaming active battery settings modified tested ok.
+
+
+Date 1 Sept 06 6.00
+---------------------
+1.added comments
+
+
+Date 19 sept 06 4.45PM
+----------------------
+1.Section 1 and  2 shown after press igniter button
+2.display of active battery info after pressing section settings
+
+Date 18 Dec 06 
+---------------
+1. added External ADC AD974 code
+
+
+TESTED
+
+
+Date 14 Jan 2007
+----------------
+1. Made Modifications for spike analysis and filtering
+2. tested spike issue with a filter count of 50 ; found ok.
+4. Pending : Check with 20 Hz Sine Wave
+5. Pending : Igniter and Section I showing same on Windows Software in some condition?
+6. Appears as if A1 = always LOW ; ADC MUX Channel selector ?? 
+   .. almost confirmed... This must be reason for Windows Software showing Same values
+   .. no problem suspected with FE Software 
+- Modifications done by Prem Chand
+
+Date 16 Jan 2007
+-----------------
+1. The Data repeating in another channel could be because of SPIKE FILTER
+2. Front End -40 +40 Graph Scale tobe relaxed to -48 +48 for test purposes
+3. 
+
+Date 17 Jan 2007
+----------------
+1. Tested for hanging symptoms, But no such symptons are found.
+2. Diagnosis is postponed.
+3. Please check the *** CAUTION : written in Flash_Tbt.c ***
+
+Date 22 Jan 2007 : 00:15 AM
+----------------------------
+1. Observed that FlashWrite Routine is returning back without actually
+writting to Flash, when SectorNumber is > 0x40. This Field is actually 
+not used in the code, except during Erase Operation.
+2. Bypassed the return statement, Check is ON. 
+3. Problem : Data Fetch retrieves 0xFF for data bytes.
+4. There are some Front End Issues. 
+The Initial Graph Screen Displays scale in milliseconds on the axis.. 
+But data plotting appears as if it is seconds...
+5. 
+
+
+
+
+
+
+
+
+LCDWriteLine(1,"                    ",2);
+LCDGotoXY(1,1);
+LCDPutText("12-11-2007");
+LCDGotoXY(16,1);
+LCDPutText("12:11");
+LCDInstWrite(LCD_CURSOR_OFF);
+

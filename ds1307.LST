@@ -1,0 +1,50 @@
+C51 COMPILER V7.05   DS1307                                                                09/04/2007 14:12:51 PAGE 1   
+
+
+C51 COMPILER V7.05, COMPILATION OF MODULE DS1307
+OBJECT MODULE PLACED IN ds1307.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.exe ds1307.h DB OE
+
+stmt level    source
+
+   1          //ds1307.h
+   2          // 
+   3          
+   4          #ifndef _DS1307__H
+   5          #define _DS1307__H
+   6          
+   7          struct time 
+   8          {
+   9                  unsigned char Seconds;
+  10                  unsigned char Minutes;
+  11                  unsigned char Hours;
+  12                  unsigned char Day;
+  13                  unsigned char Date;
+  14                  unsigned char Month;
+  15                  unsigned int Year;
+  16          };
+  17          
+  18          #define SEC_ADD         0x00
+  19          #define MIN_ADD         0x01
+  20          #define HOUR_ADD        0x02
+  21          #define DAY_ADD         0x03
+  22          #define DATE_ADD        0x04
+  23          #define MONTH_ADD       0x05
+  24          #define YEAR_ADD        0x06
+  25          #define CONTROL_ADD     0x07
+  26          
+  27          #endif
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   ----    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

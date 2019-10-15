@@ -1,0 +1,106 @@
+C51 COMPILER V7.05   EXT_ADC                                                               10/15/2019 17:32:09 PAGE 1   
+
+
+C51 COMPILER V7.05, COMPILATION OF MODULE EXT_ADC
+OBJECT MODULE PLACED IN Ext_Adc.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE Ext_Adc.c DB OE BR INCDIR(C:\SiLabs\MCU\Inc)
+
+stmt level    source
+
+   1          //      ad974 test 
+   2          
+   3          /*
+   4                  CS pin ties to ground.
+   5                  WR1 and Wr2 pins are tied to ground.
+   6                  EXT/INT pinis connected to tied to +5V
+   7          
+   8                  Input Voltage Range     Connect VxA to  Connect VxB to  Input Impedence
+   9                  -/+ 10 v                                    BIP                         VIn                             13.7 kohms
+  10                  0 to +5V                                        VIn                             Gnd                             6.0 kohms
+  11                  0 to 4v                                         VIn                             VIn                             6.4 kohms
+  12          
+  13          */
+  14          
+  15          #include "functions.h"
+  16          
+  17          
+  18          
+  19          #define ADC_RES_TEN_VOLTS 0.00030517578125  
+  20          
+  21          #define BYTE(x) (1<<(x))
+  22          #define SETBIT(p,x) (p |= BYTE(x))
+  23          #define CLEARBIT(p,x) (p &= ~BYTE(x))
+  24          
+  25          //unsigned int Adcvoltage=0;
+  26          
+  27          
+  28          
+  29          
+  30          
+  31          
+  32          unsigned int ReadADCData()
+  33          {
+  34   1              unsigned char idata Counter=16;
+  35   1              unsigned int idata Adcvoltage1;
+  36   1              unsigned char idata Count;
+  37   1      
+  38   1              SFRPAGE   = CONFIG_PAGE;/* Set SFR Page to 00 */        
+  39   1      
+  40   1              READ_CONVERT =0;
+  41   1              _nop_();
+  42   1              READ_CONVERT =1;
+  43   1              delay(0x2);
+  44   1              DATACLK = 1;
+  45   1              _nop_();
+  46   1              DATACLK = 0;
+  47   1              _nop_();
+  48   1              DATACLK = 1;
+  49   1      
+  50   1              DATACLK = 0;
+  51   1              if(DATA)
+  52   1                      SETBIT(Adcvoltage1,Counter--);
+  53   1              else
+  54   1                      CLEARBIT(Adcvoltage1,Counter--);
+  55   1              DATACLK = 1;
+C51 COMPILER V7.05   EXT_ADC                                                               10/15/2019 17:32:09 PAGE 2   
+
+  56   1              _nop_();
+  57   1      
+  58   1              SFRPAGE   = CONFIG_PAGE;/* Set SFR Page to 00 */        
+  59   1      
+  60   1              for(Count =0;Count<16;Count++)
+  61   1              {
+  62   2              
+  63   2                      DATACLK = 0;
+  64   2                      if(DATA)
+  65   2                              SETBIT(Adcvoltage1,Counter--);
+  66   2                      else
+  67   2                              CLEARBIT(Adcvoltage1,Counter--);
+  68   2                      DATACLK = 1;
+  69   2                              _nop_();
+  70   2                              
+  71   2              }
+  72   1              DATACLK =0;
+  73   1              while(!ADC_BUSY);
+  74   1      
+  75   1              if(Adcvoltage1 & 0x8000) 
+  76   1                      Adcvoltage1 &= 0x7FFF;
+  77   1              else
+  78   1                      Adcvoltage1 = ~Adcvoltage1;
+  79   1      
+  80   1              return Adcvoltage1;
+  81   1      } 
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    231    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----       4
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

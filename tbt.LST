@@ -1,0 +1,139 @@
+C51 COMPILER V7.05   TBT                                                                   09/03/2007 16:23:55 PAGE 1   
+
+
+C51 COMPILER V7.05, COMPILATION OF MODULE TBT
+OBJECT MODULE PLACED IN tbt.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.exe tbt.h DB OE
+
+stmt level    source
+
+   1          /*==============================================================================================*/
+   2          /* RIGHTS      : Acorn Embedded Systems India (Pvt) Ltd.
+   3                                         www.acornindia.com                                                           */
+   4          /* Developed by: Nagarjuna Reddy.G,
+   5                                           nagarjuna@sorokasoft.com
+   6          /* HISTORY     : V1.00    AA    10-DEC-2005
+   7          /*================================================================================================= */
+   8          
+   9          //P0.0  UART0_TXD
+  10          //P0.1  UART0_RXD
+  11          //P0.2  SPI_SCK
+  12          //P0.3  SPI_MISO
+  13          //P0.4  SPI_MOSI
+  14          //P0.5  SPI_NSS
+  15          //P0.6  I2C_SDA
+  16          //P0.7  I2C_SCL
+  17          //P1.0  UART1_TXD
+  18          //P1.1  UART1_RXD
+  19          //P1.2  N.C
+  20          //P1.3  N.C
+  21          //P1.4  N.C
+  22          //P1.5  N.C
+  23          
+  24          #define OUTPUT_DATA             P2
+  25          #define INPUT_DATA_LSB          P4
+  26          #define INPUT_DATA_MSB          P5
+  27          #define KEYPORT                         P6
+  28          #define LCD_DATA                        P7
+  29          
+  30          //sbit STROBE                           = P1^2;
+  31          //sbit PRINTER_BUSY             = P1^3;
+  32          
+  33          sbit START_SWITCH                       = P1^2;         //pull up mode
+*** ERROR C202 IN LINE 33 OF TBT.H: 'P1': undefined identifier
+  34          sbit OUTPUT_LATCH_ENABLE    = P1^6;     
+*** ERROR C202 IN LINE 34 OF TBT.H: 'P1': undefined identifier
+  35          sbit CE                                         = P1^7;
+*** ERROR C202 IN LINE 35 OF TBT.H: 'P1': undefined identifier
+  36          
+  37          sbit IGNITER_ENABLE                     = P1^4;
+*** ERROR C202 IN LINE 37 OF TBT.H: 'P1': undefined identifier
+  38          
+  39          
+  40          sbit READY_LED                          = P2^0;         //open drain mode
+*** ERROR C202 IN LINE 40 OF TBT.H: 'P2': undefined identifier
+  41          sbit DAQ_LED                            = P2^1;         //open drain mode
+*** ERROR C202 IN LINE 41 OF TBT.H: 'P2': undefined identifier
+  42          sbit SOLID_STATE_RELAY          = P2^2;         //Igniter
+*** ERROR C202 IN LINE 42 OF TBT.H: 'P2': undefined identifier
+  43          sbit PULSE_RELAY                        = P2^3;         //SPDT
+*** ERROR C202 IN LINE 43 OF TBT.H: 'P2': undefined identifier
+  44          sbit K1RELAY                            = P2^4;         //DPDTsbit PULSE_RELAY                  = P2^3; //SPDT
+*** ERROR C202 IN LINE 44 OF TBT.H: 'P2': undefined identifier
+  45          sbit K2RELAY                            = P2^5;         //DPDT
+*** ERROR C202 IN LINE 45 OF TBT.H: 'P2': undefined identifier
+C51 COMPILER V7.05   TBT                                                                   09/03/2007 16:23:55 PAGE 2   
+
+  46          sbit K3RELAY                            = P2^6;         //DPDT
+*** ERROR C202 IN LINE 46 OF TBT.H: 'P2': undefined identifier
+  47          
+  48          sbit SPI_WP_FLASH1              = P3^0;
+*** ERROR C202 IN LINE 48 OF TBT.H: 'P3': undefined identifier
+  49          sbit SPI_HOLD_FLASH1            = P3^1;
+*** ERROR C202 IN LINE 49 OF TBT.H: 'P3': undefined identifier
+  50          sbit SPI_WP_FLASH2              = P3^2; 
+*** ERROR C202 IN LINE 50 OF TBT.H: 'P3': undefined identifier
+  51          sbit SPI_HOLD_FLASH2            = P3^3;
+*** ERROR C202 IN LINE 51 OF TBT.H: 'P3': undefined identifier
+  52          sbit RS_485_CTRL                = P3^4;
+*** ERROR C202 IN LINE 52 OF TBT.H: 'P3': undefined identifier
+  53          sbit LCD_E                              = P3^5;
+*** ERROR C202 IN LINE 53 OF TBT.H: 'P3': undefined identifier
+  54          sbit LCD_RS                     = P3^6;
+*** ERROR C202 IN LINE 54 OF TBT.H: 'P3': undefined identifier
+  55          sbit LCD_RW                     = P3^7;
+*** ERROR C202 IN LINE 55 OF TBT.H: 'P3': undefined identifier
+  56          
+  57          sbit READ_CONVERT                       = P4^0;         //Adc start of conversion
+*** ERROR C202 IN LINE 57 OF TBT.H: 'P4': undefined identifier
+  58          sbit DATACLK                            = P4^1;         //Data clock reading the adc data
+*** ERROR C202 IN LINE 58 OF TBT.H: 'P4': undefined identifier
+  59          sbit DATA                                       = P4^2;         //Adc data outputted on this pin with respect to clock
+*** ERROR C202 IN LINE 59 OF TBT.H: 'P4': undefined identifier
+  60          sbit ADC_BUSY                           = P4^3;         //Adc end of conversion 
+*** ERROR C202 IN LINE 60 OF TBT.H: 'P4': undefined identifier
+  61          sbit A0                                         = P4^4;         //channel selection 1
+*** ERROR C202 IN LINE 61 OF TBT.H: 'P4': undefined identifier
+  62          sbit A1                                         = P4^5;         //channel selection 2
+*** ERROR C202 IN LINE 62 OF TBT.H: 'P4': undefined identifier
+  63                  
+  64          sbit ROW1                                       = P6^0;
+*** ERROR C202 IN LINE 64 OF TBT.H: 'P6': undefined identifier
+  65          sbit ROW2                                       = P6^1;
+*** ERROR C202 IN LINE 65 OF TBT.H: 'P6': undefined identifier
+  66          sbit ROW3                                       = P6^2;
+*** ERROR C202 IN LINE 66 OF TBT.H: 'P6': undefined identifier
+  67          sbit ROW4                                       = P6^3;
+*** ERROR C202 IN LINE 67 OF TBT.H: 'P6': undefined identifier
+  68          sbit COLUMN1                            = P6^4;
+*** ERROR C202 IN LINE 68 OF TBT.H: 'P6': undefined identifier
+  69          sbit COLUMN2                            = P6^5;
+*** ERROR C202 IN LINE 69 OF TBT.H: 'P6': undefined identifier
+  70          sbit COLUMN3                            = P6^6;
+*** ERROR C202 IN LINE 70 OF TBT.H: 'P6': undefined identifier
+  71          sbit COLUMN4                            = P6^7;
+*** ERROR C202 IN LINE 71 OF TBT.H: 'P6': undefined identifier
+  72          
+  73          sbit LCD_D0                             = P7^0;
+*** ERROR C202 IN LINE 73 OF TBT.H: 'P7': undefined identifier
+  74          sbit LCD_D1                             = P7^1;
+*** ERROR C202 IN LINE 74 OF TBT.H: 'P7': undefined identifier
+  75          sbit LCD_D2                             = P7^2;
+*** ERROR C202 IN LINE 75 OF TBT.H: 'P7': undefined identifier
+  76          sbit LCD_D3                             = P7^3;
+*** ERROR C202 IN LINE 76 OF TBT.H: 'P7': undefined identifier
+  77          sbit LCD_D4                             = P7^4;
+*** ERROR C202 IN LINE 77 OF TBT.H: 'P7': undefined identifier
+  78          sbit LCD_D5                             = P7^5;
+*** ERROR C202 IN LINE 78 OF TBT.H: 'P7': undefined identifier
+C51 COMPILER V7.05   TBT                                                                   09/03/2007 16:23:55 PAGE 3   
+
+  79          sbit LCD_D6                             = P7^6;
+*** ERROR C202 IN LINE 79 OF TBT.H: 'P7': undefined identifier
+  80          sbit LCD_D7                             = P7^7;
+*** ERROR C202 IN LINE 80 OF TBT.H: 'P7': undefined identifier
+  81          
+  82          sbit CHIP3_ENABLE                       = P2^5;
+*** ERROR C202 IN LINE 82 OF TBT.H: 'P2': undefined identifier
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  42 ERROR(S)

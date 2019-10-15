@@ -1,0 +1,949 @@
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 1   
+
+
+C51 COMPILER V7.05, COMPILATION OF MODULE UART
+OBJECT MODULE PLACED IN uart.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE uart.c DB OE BR INCDIR(C:\SiLabs\MCU\Inc)
+
+stmt level    source
+
+   1          /*==============================================================================================*/
+   2          /* RIGHTS      : Acorn Embedded Systems India (Pvt) Ltd.
+   3                                         www.acornindia.com                                                           */
+   4          /* Developed by: Nagarjuna Reddy.G,
+   5                                           nagarjuna@sorokasoft.com
+   6          /* HISTORY     : V1.00    AA    10-DEC-2005
+   7          /*================================================================================================= */
+   8          
+   9          
+  10          #include<stdlib.h>
+  11          #include<functions.h>
+  12          #include "ds1307.h"
+  13          #include "Record.h"
+  14          
+  15          extern struct Relay xdata WriteRelayValues;
+  16          extern struct Relay xdata ReadRelayValues;
+  17          extern struct time xdata stTime;
+  18          extern unsigned char TransmitChksum;
+  19          extern unsigned char xdata RecordsUsed;
+  20          extern bit Remote;
+  21          extern unsigned char idata FreeRecords;
+  22          extern unsigned char idata FileName;
+  23          
+  24          unsigned char BatteryIndex=1;
+  25          
+  26          struct Record xdata stRecordInfo;
+  27          struct Record xdata stRecordReadInfo;
+  28          unsigned char xdata RcvdBuffer[200];
+  29          unsigned char xdata TxdBuffer[600];
+  30          bit completedPacket;
+  31          
+  32          unsigned char xdata ActiveBat1Info[]="ECT-417";
+  33          unsigned char xdata ActiveBat2Info[]="ECT-307";
+  34          
+  35          void UART1_Init(void);
+  36          void UART0_Init();
+  37          
+  38          
+  39          #define SOM       '$'
+  40          
+  41          extern void SetTime_Date(struct time stTime);
+  42          
+  43          
+  44          unsigned char xdata index,RecvdChksum;
+  45          unsigned int xdata MessageLength = 200;
+  46          bit Message;
+  47          bit ChksumErr=0;        
+  48          
+  49          void UART1_Init(void)
+  50          {
+  51   1              SFRPAGE   = TIMER01_PAGE;
+  52   1          TCON      = 0x40;
+  53   1          TMOD      = 0x20;
+  54   1          //TH1       = 0xA0;   //baud rate 9600
+  55   1          TH1       = 0x70;   //baud rate 19200
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 2   
+
+  56   1          //TH1       = 0xB8;   //baud rate 19200
+  57   1              CKCON     = 0x01;
+  58   1          SFRPAGE   = UART1_PAGE;
+  59   1          SCON1     = 0x50;
+  60   1              EIE2     |= 0x40;   //enabe uart1 interrupt
+  61   1      }
+  62          
+  63          
+  64          void UART0_Init()
+  65          {
+  66   1          SFRPAGE   = UART0_PAGE;
+  67   1          SCON0     = 0x50;
+  68   1          SSTA0     = 0x15;
+  69   1          SFRPAGE   = TMR2_PAGE;
+  70   1          TMR2CN    = 0x04;
+  71   1          TMR2CF    = 0x08;
+  72   1      //    RCAP2L    = 0x70;  //baud rate 9600
+  73   1      //    RCAP2H    = 0xFF;
+  74   1      
+  75   1      //      RCAP2L    = 0xF4;  //baud rate 115200
+  76   1      //    RCAP2H    = 0xFF;
+  77   1      
+  78   1      #ifdef EXTERNAL_CLK
+  79   1              RCAP2L    = 0xF4;  //baud rate 115200
+  80   1          RCAP2H    = 0xFF;
+  81   1      #else
+                      RCAP2L    = 0xD0;
+                  RCAP2H    = 0xFF;
+              #endif
+  85   1      
+  86   1      
+  87   1          IE       |= 0x90; // enable uart0 interrupt
+  88   1      }
+  89          char char2decimal(char c)
+  90          {
+  91   1              if(c >='0' && c <= '9')
+  92   1                      return c-'0';
+  93   1              if(c >='a' && c <='f')
+  94   1                      return 10 + c - 'a';
+  95   1              if(c >='A' && c <= 'F')
+  96   1                      return 10 + c - 'A';
+  97   1      }
+  98          
+  99          unsigned int myatoi(char *str)
+ 100          {
+ 101   1              unsigned int number=0;
+ 102   1              while(*str)
+ 103   1                      number = number*10+char2decimal(*str++);
+ 104   1              return number;
+ 105   1      }
+ 106          
+ 107          void mystrncpy(char *dest,const char*source,unsigned int len)
+ 108          {
+ 109   1              unsigned char i;
+ 110   1              for(i=0;i<len;i++)
+ 111   1                      *dest++ = *source++;
+ 112   1              *dest = '\0';
+ 113   1      }
+ 114          //pc interface 
+ 115          void Uart0_isr(void) interrupt 4
+ 116          {
+ 117   1              unsigned char ReceivedCharacter;
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 3   
+
+ 118   1              if(RI0)
+ 119   1              {
+ 120   2              
+ 121   2                      RI0 = 0;
+ 122   2                      ReceivedCharacter = SBUF0;
+ 123   2      
+ 124   2              if(ReceivedCharacter == SOM)
+ 125   2              {
+ 126   3                              index = 0;
+ 127   3                              RecvdChksum =0;
+ 128   3                              Message = 1;
+ 129   3                      }
+ 130   2                      else
+ 131   2                      if(Message == 1)
+ 132   2                      {
+ 133   3                              if(index >= 7 && index != (MessageLength+7))
+ 134   3                                      RecvdChksum=RecvdChksum^RcvdBuffer[index-1];
+ 135   3      
+ 136   3                              RcvdBuffer[index++]=ReceivedCharacter;
+ 137   3                              
+ 138   3                              if(index == 6)
+ 139   3                              {
+ 140   4                                      mystrncpy(TxdBuffer,RcvdBuffer,6);
+ 141   4                                      MessageLength = myatoi(TxdBuffer);
+ 142   4                              }
+ 143   3                              if(index == (MessageLength+7))
+ 144   3                              {
+ 145   4                                      if(RcvdBuffer[index-1] == RecvdChksum)
+ 146   4                                      {
+ 147   5                                              completedPacket =1;
+ 148   5                                              RcvdBuffer[index-1]= '\0';
+ 149   5      
+ 150   5                                              Message = 0;
+ 151   5                                              index = 0;
+ 152   5                      }
+ 153   4                      else
+ 154   4                                      {
+ 155   5                                              completedPacket =0;
+ 156   5                                              ChksumErr  =1;
+ 157   5                                              Message = 0;
+ 158   5                                              index = 0;
+ 159   5                                      }
+ 160   4                              }
+ 161   3                      }                                                                                       
+ 162   2              }
+ 163   1      
+ 164   1      }
+ 165          
+ 166          //debug port interface 
+ 167          void UART1_ISR(void) interrupt 20
+ 168          {
+ 169   1              if ((SCON1 & 0x01) == 0x01)
+ 170   1              {                                                               // handle receive function
+ 171   2                      SCON1 &= ~0x01;                         // RI1 = 0; clear RX complete
+ 172   2              }
+ 173   1      }
+ 174          //transmit data to pc 
+ 175          void TransmitCharOnRS232(unsigned char value)
+ 176          {
+ 177   1              char SFRPAGE_SAVE = SFRPAGE;
+ 178   1              SFRPAGE = UART0_PAGE;
+ 179   1              TI0 = 0;
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 4   
+
+ 180   1              SBUF0 = value;
+ 181   1              while(TI0 != 1);
+ 182   1              TI0 =0;
+ 183   1              SFRPAGE = SFRPAGE_SAVE;
+ 184   1      }
+ 185          
+ 186          //Debug port data transmission
+ 187          void TransmitCharRS485(unsigned char value)
+ 188          {
+ 189   1              char SFRPAGE_SAVE = SFRPAGE;
+ 190   1              SFRPAGE = UART1_PAGE;
+ 191   1              TI1 = 0;
+ 192   1              SBUF1 = value;
+ 193   1              while(TI1 != 1);
+ 194   1              TI1 = 0;
+ 195   1              SFRPAGE = SFRPAGE_SAVE;
+ 196   1      }
+ 197          //Debug port data transmission
+ 198          void Put_String_UART1(unsigned char *String)
+ 199          {
+ 200   1              while(*String != '\0')
+ 201   1                      TransmitCharRS485(*String++);
+ 202   1      }
+ 203          
+ 204          
+ 205          void PutStringOnRS232(unsigned char *String)
+ 206          {
+ 207   1              while(*String != '\0')
+ 208   1                      TransmitCharOnRS232(*String++);
+ 209   1      }
+ 210          //Decode commands from pc.
+ 211          bit DecodeCommands()
+ 212          {
+ 213   1              unsigned char *RcvdData;
+ 214   1              unsigned char Temp,Len ;
+ 215   1      //      unsigned int idata Index=1;
+ 216   1              unsigned long MsgLength;
+ 217   1              bit TestResult= 0;
+ 218   1      //      char idata buff[10];
+ 219   1              unsigned char idata Section1=0x01,Section2=0x02;
+ 220   1              switch(RcvdBuffer[6])
+ 221   1              {
+ 222   2                      case 'S' :      // Set Time
+ 223   2                                              Temp = RcvdBuffer[7] -'0';
+ 224   2                                              stTime.Date =Temp << 4;
+ 225   2                                              stTime.Date |=(RcvdBuffer[8]-'0');
+ 226   2      
+ 227   2                                              Temp = RcvdBuffer[9] -'0';
+ 228   2                                              stTime.Month =Temp << 4;
+ 229   2                                              stTime.Month |=(RcvdBuffer[10]-'0');
+ 230   2      
+ 231   2                                              Temp = RcvdBuffer[13] -'0';
+ 232   2                                              stTime.Year =Temp << 4;
+ 233   2                                              stTime.Year |=(RcvdBuffer[14]-'0');
+ 234   2      
+ 235   2                                              Temp = RcvdBuffer[15] -'0';
+ 236   2                                              stTime.Hours =Temp << 4;
+ 237   2                                              stTime.Hours |=(RcvdBuffer[16]-'0');
+ 238   2      
+ 239   2                                              Temp = RcvdBuffer[17] -'0';
+ 240   2                                              stTime.Minutes =Temp << 4;
+ 241   2                                              stTime.Minutes |=(RcvdBuffer[18]-'0');
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 5   
+
+ 242   2      
+ 243   2                                              Temp = RcvdBuffer[19] -'0';
+ 244   2                                              stTime.Seconds =Temp << 4;
+ 245   2                                              stTime.Seconds |=(RcvdBuffer[20]-'0');
+ 246   2      
+ 247   2                                              SetTime_Date(stTime);
+ 248   2                                              PutStringOnRS232(ACK);
+ 249   2                              
+ 250   2                      break;
+ 251   2                      case 'G' ://  Transmit Time 
+ 252   2                                              GetTime_Date(&stTime);
+ 253   2                                              Len=sprintf(TxdBuffer,"S%02x%02x20%02x",(unsigned int)stTime.Date,(unsigned int)stTime.Month,(unsigne
+             -d int)stTime.Year);
+ 254   2                                              Len+=sprintf(TxdBuffer+Len,"%02x%02x%02x",(unsigned int)stTime.Hours&0x3f,(unsigned int)stTime.Minute
+             -s,(unsigned int)stTime.Seconds);
+ 255   2                                              SendDataToRS232(TxdBuffer);
+ 256   2                                              
+ 257   2                      break;
+ 258   2                      case 'L' : // Transmit Test details
+ 259   2                                              ReadRecordLists();
+ 260   2                      break;
+ 261   2                      case 'F' :  // Fetch Test Data
+ 262   2                                              RcvdData = strtok(RcvdBuffer+7,",");
+ 263   2                                              if(RcvdData <=0)
+ 264   2                                                      TestResult =0;
+ 265   2                                              strcpy(stRecordInfo.SerialNumber,RcvdData);
+ 266   2      
+ 267   2                                              Temp = RcvdBuffer[19] -'0';
+ 268   2                                              stRecordInfo.Date.Day =Temp << 4;
+ 269   2                                              stRecordInfo.Date.Day |=(RcvdBuffer[20]-'0');
+ 270   2                                              if(stRecordInfo.Date.Day <=0)
+ 271   2                                                      TestResult =0;
+ 272   2                                              Temp = RcvdBuffer[21] -'0';
+ 273   2                                              stRecordInfo.Date.Month =Temp << 4;
+ 274   2                                              stRecordInfo.Date.Month |=(RcvdBuffer[22]-'0');
+ 275   2                                              if(stRecordInfo.Date.Month <=0)
+ 276   2                                                      TestResult =0;
+ 277   2                                              
+ 278   2                                              Temp = RcvdBuffer[23] -'0';
+ 279   2                                              stRecordInfo.Date.Year =Temp << 12;
+ 280   2                                              Temp = RcvdBuffer[24] -'0';
+ 281   2                                              stRecordInfo.Date.Year |=Temp << 8;
+ 282   2                                              Temp = RcvdBuffer[25] -'0';
+ 283   2                                              stRecordInfo.Date.Year |=Temp << 4;
+ 284   2                                              stRecordInfo.Date.Year |=(RcvdBuffer[26]-'0');
+ 285   2                                              if(stRecordInfo.Date.Year <=2005)
+ 286   2                                                      TestResult =0;
+ 287   2                                              Temp = RcvdBuffer[27] -'0';
+ 288   2                                              stRecordInfo.Time.Hours =Temp << 4;
+ 289   2                                              stRecordInfo.Time.Hours |=(RcvdBuffer[28]-'0');
+ 290   2      
+ 291   2                                              Temp = RcvdBuffer[29] -'0';
+ 292   2                                              stRecordInfo.Time.Minutes =Temp << 4;
+ 293   2                                              stRecordInfo.Time.Minutes |=(RcvdBuffer[30]-'0');
+ 294   2      
+ 295   2                                              Temp = RcvdBuffer[31] -'0';
+ 296   2                                              stRecordInfo.Time.Seconds =Temp << 4;
+ 297   2                                              stRecordInfo.Time.Seconds |=(RcvdBuffer[32]-'0');
+ 298   2                                              TransmitChksum =0;
+ 299   2                                              BatteryIndex =1;
+ 300   2                                              while(BatteryIndex <MAX_RECORDS)
+ 301   2                                              {
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 6   
+
+ 302   3                                                      //Read record information
+ 303   3                                                      FLASH_Read( DATA_RECORD_ADDRESS(BatteryIndex),(char*) &stRecordReadInfo,sizeof(struct Record));
+ 304   3                                                      //Compare serial number
+ 305   3                                                      if(strcmp(stRecordInfo.SerialNumber,stRecordReadInfo.SerialNumber) == 0) 
+ 306   3                                                      {
+ 307   4                                                      //compare Date
+ 308   4                                                              if(stRecordInfo.Date.Day == stRecordReadInfo.Date.Day && stRecordInfo.Date.Month == stRecordReadInf
+             -o.Date.Month && stRecordInfo.Date.Year == stRecordReadInfo.Date.Year)
+ 309   4                                                              {
+ 310   5                                                              //compare hours
+ 311   5                                                                      if(stRecordInfo.Time.Hours = stRecordReadInfo.Time.Hours && stRecordInfo.Time.Minutes == stRecordR
+             -eadInfo.Time.Minutes && stRecordInfo.Time.Seconds == stRecordReadInfo.Time.Seconds)
+ 312   5                                                                      {
+ 313   6      
+ 314   6                                                                              for(BatteryIndex =1;BatteryIndex <=10;BatteryIndex++)
+ 315   6                                                                              {
+ 316   7                                                                                              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 317   7                                                                                              if((strncmp(ReadRelayValues.BatteryName, stRecordReadInfo.Battery1Type, 7)) == 0)
+ 318   7                                                                                                      break;
+ 319   7                                                                              }
+ 320   6                                                                              
+ 321   6                                                                              if(BatteryIndex > 10)
+ 322   6                                                                              {
+ 323   7                                                                                      ReadRelayValues.K1StartTime = 0;
+ 324   7                                                                                      ReadRelayValues.K1StopTime = 0;
+ 325   7                                                                                      ReadRelayValues.K2StartTime = 0;
+ 326   7                                                                                      ReadRelayValues.K2StopTime = 0;
+ 327   7                                                                                      ReadRelayValues.K3StartTime = 0;
+ 328   7                                                                                      ReadRelayValues.K3StopTime = 0;
+ 329   7                                                                                      ReadRelayValues.PRStart = 0;
+ 330   7                                                                                      ReadRelayValues.PRDuration = 0;
+ 331   7                                                                                      ReadRelayValues.PRCount = 0;
+ 332   7                                                                                      ReadRelayValues.Interval = 0;
+ 333   7                                                                              }
+ 334   6      
+ 335   6      
+ 336   6                                                                              Len=sprintf(TxdBuffer,"F%s,%s,",stRecordReadInfo.SerialNumber,stRecordReadInfo.Battery1Type);
+ 337   6                                                                              Len+=sprintf(TxdBuffer+Len,"%02x%02x%04x",(unsigned int)stRecordReadInfo.Date.Day,(unsigned int)s
+             -tRecordReadInfo.Date.Month,(unsigned int)stRecordReadInfo.Date.Year);
+ 338   6                                                                              Len+=sprintf(TxdBuffer+Len,"%02x%02x%02x,",(unsigned int)stRecordReadInfo.Time.Hours,(unsigned in
+             -t)stRecordReadInfo.Time.Minutes,(unsigned int)stRecordReadInfo.Time.Seconds);
+ 339   6                                                                              Len+=sprintf(TxdBuffer+Len,"%02d,%04d,%04ld,",(unsigned int)stRecordReadInfo.TestCondition,stReco
+             -rdReadInfo.IgnitionDuration,stRecordReadInfo.Testduration);
+ 340   6                                                                              Len+=sprintf(TxdBuffer+Len,"%04ld,%04ld,",(unsigned long)ReadRelayValues.K1StartTime,(unsigned lo
+             -ng)ReadRelayValues.K1StopTime);
+ 341   6                                                                              Len+=sprintf(TxdBuffer+Len,"%04ld,%04ld,",(unsigned long)ReadRelayValues.K2StartTime,(unsigned lo
+             -ng)ReadRelayValues.K2StopTime);
+ 342   6                                                                              Len+=sprintf(TxdBuffer+Len,"%04ld,%04ld,",(unsigned long)ReadRelayValues.K3StartTime,(unsigned lo
+             -ng)ReadRelayValues.K3StopTime);
+ 343   6                                                                              Len+=sprintf(TxdBuffer+Len,"%04ld,%04ld,%02d,%04ld,",(unsigned long)ReadRelayValues.PRStart,(unsi
+             -gned long)ReadRelayValues.PRDuration,ReadRelayValues.PRCount,(unsigned long)ReadRelayValues.Interval);
+ 344   6                                              //added on 09 august 06  
+ 345   6                                                                      
+ 346   6                                                                              Len+=sprintf(TxdBuffer+Len,"%02d,%02d,",(unsigned int)stRecordReadInfo.FirstSection,(unsigned int
+             -)stRecordReadInfo.SecondSection);
+ 347   6      
+ 348   6                                              
+ 349   6                                                                                      //Modified by Madhu on 18072006 to resolve the count/interval problem
+ 350   6                                                                              MsgLength = strlen(TxdBuffer)+stRecordReadInfo.NoOfBytes*2;
+ 351   6                                                                              PutCharOnRS232(SOM);
+ 352   6                                                                              PutCharOnRS232((MsgLength/100000)+'0');
+ 353   6                                                                              MsgLength %=100000;
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 7   
+
+ 354   6                                                                              PutCharOnRS232((MsgLength/10000)+'0');
+ 355   6                                                                              MsgLength %=10000;
+ 356   6                                                                              PutCharOnRS232((MsgLength/1000)+'0');
+ 357   6                                                                              MsgLength %=1000;
+ 358   6                                                                              PutCharOnRS232((MsgLength/100)+'0');
+ 359   6                                                                              MsgLength %=100;
+ 360   6                                                                              PutCharOnRS232((MsgLength/10)+'0');
+ 361   6                                                                              MsgLength %=10;
+ 362   6                                                                              PutCharOnRS232(MsgLength+'0');
+ 363   6                                                                              TransmitChksum ^= Checksum(TxdBuffer);
+ 364   6                                                                              PutStringOnRS232(TxdBuffer);
+ 365   6                                                                              Len=ReadFileFromFlash(stRecordReadInfo.FileName,stRecordReadInfo.NoOfBytes*2);
+ 366   6                                                                              if(Len == -1)
+ 367   6                                                                                      PutStringOnRS232("Insert Flash Card");
+ 368   6                                                                              BatteryIndex =1;
+ 369   6                                                                              TestResult =1;
+ 370   6                                                                              break;
+ 371   6                                                                      }
+ 372   5                                                              }
+ 373   4                                                      }
+ 374   3                                                      BatteryIndex++;
+ 375   3                                              }
+ 376   2                                              PutCharOnRS232(TransmitChksum);
+ 377   2                                              if(!TestResult)
+ 378   2                                                      PutStringOnRS232(NACK); //nack
+ 379   2                                                      
+ 380   2                              break;
+ 381   2                      case 'D' : // DELETE TEST
+ 382   2      
+ 383   2                                              RcvdData = strtok(RcvdBuffer+7,",");
+ 384   2                                              strcpy(stRecordInfo.SerialNumber,RcvdData);
+ 385   2      
+ 386   2                                              Temp = RcvdBuffer[19] -'0';
+ 387   2                                              stRecordInfo.Date.Day =Temp << 4;
+ 388   2                                              stRecordInfo.Date.Day |=(RcvdBuffer[20]-'0');
+ 389   2      
+ 390   2                                              Temp = RcvdBuffer[21] -'0';
+ 391   2                                              stRecordInfo.Date.Month =Temp << 4;
+ 392   2                                              stRecordInfo.Date.Month |=(RcvdBuffer[22]-'0');
+ 393   2      
+ 394   2                                              Temp = RcvdBuffer[23] -'0';
+ 395   2                                              stRecordInfo.Date.Year =Temp << 12;
+ 396   2                                              Temp = RcvdBuffer[24] -'0';
+ 397   2                                              stRecordInfo.Date.Year |=Temp << 8;
+ 398   2                                              Temp = RcvdBuffer[25] -'0';
+ 399   2                                              stRecordInfo.Date.Year |=Temp << 4;
+ 400   2                                              stRecordInfo.Date.Year |=(RcvdBuffer[26]-'0');
+ 401   2      
+ 402   2                                              Temp = RcvdBuffer[27] -'0';
+ 403   2                                              stRecordInfo.Time.Hours =Temp << 4;
+ 404   2                                              stRecordInfo.Time.Hours |=(RcvdBuffer[28]-'0');
+ 405   2      
+ 406   2                                              Temp = RcvdBuffer[29] -'0';
+ 407   2                                              stRecordInfo.Time.Minutes =Temp << 4;
+ 408   2                                              stRecordInfo.Time.Minutes |=(RcvdBuffer[30]-'0');
+ 409   2      
+ 410   2                                              Temp = RcvdBuffer[31] -'0';
+ 411   2                                              stRecordInfo.Time.Seconds =Temp << 4;
+ 412   2                                              stRecordInfo.Time.Seconds |=(RcvdBuffer[32]-'0');
+ 413   2                                              BatteryIndex =1;
+ 414   2                                              while(BatteryIndex <MAX_RECORDS)
+ 415   2                                              {
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 8   
+
+ 416   3                                                      FLASH_Read( DATA_RECORD_ADDRESS(BatteryIndex),(char*) &stRecordReadInfo,sizeof(struct Record));
+ 417   3                                                      if(strcmp(stRecordInfo.SerialNumber,stRecordReadInfo.SerialNumber) == 0) 
+ 418   3                                                      {
+ 419   4                                                              if(stRecordInfo.Date.Day == stRecordReadInfo.Date.Day && stRecordInfo.Date.Month == stRecordReadInf
+             -o.Date.Month && stRecordInfo.Date.Year == stRecordReadInfo.Date.Year)
+ 420   4                                                              {
+ 421   5                                                                      if(stRecordInfo.Time.Hours == stRecordReadInfo.Time.Hours && stRecordInfo.Time.Minutes == stRecord
+             -ReadInfo.Time.Minutes && stRecordInfo.Time.Seconds == stRecordReadInfo.Time.Seconds)
+ 422   5                                                                      {
+ 423   6                                                                                      EraseRecords(stRecordReadInfo.FileName,1);
+ 424   6                                                                                      TestResult = 1;
+ 425   6                                                                                      break;
+ 426   6                                                                      }
+ 427   5                                                              }
+ 428   4                                                      }
+ 429   3                                                      BatteryIndex++;
+ 430   3                                              }
+ 431   2                                              if(TestResult)
+ 432   2                                                      PutStringOnRS232(ACK); //ack
+ 433   2                                              else
+ 434   2                                                      PutStringOnRS232(NACK); //nack
+ 435   2                              break;
+ 436   2                      case 'R' :      // Transmit Record Status
+ 437   2                                              sprintf(TxdBuffer,"R%02d,%02d",(unsigned int)RecordsUsed,(unsigned int)FreeRecords);
+ 438   2                                              SendDataToRS232(TxdBuffer);
+ 439   2                      break;
+ 440   2                      case 'C' : // Set Test Configuration
+ 441   2                                              RcvdData = strtok(RcvdBuffer+7,",");
+ 442   2                                              strcpy(stRecordInfo.Battery1Type,RcvdData);
+ 443   2                                              strcpy(WriteRelayValues.BatteryName,RcvdData);
+ 444   2                                              for(BatteryIndex =1;BatteryIndex <=10;BatteryIndex++)
+ 445   2                                              {
+ 446   3                                                              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 447   3                                                              if((strncmp(ReadRelayValues.BatteryName,RcvdData,7)) == 0)
+ 448   3                                                                      break;
+ 449   3                                              }
+ 450   2                                              if(BatteryIndex >10)
+ 451   2                                              {
+ 452   3                                                      PutStringOnRS232(NACK); 
+ 453   3                                                      return 0;
+ 454   3                                              }
+ 455   2                                              RcvdData = strtok(NULL,","); 
+ 456   2                                              stRecordInfo.IgnitionDuration = atoi(RcvdData);
+ 457   2                                              if(stRecordInfo.IgnitionDuration >0 && stRecordInfo.IgnitionDuration <=999)
+ 458   2                                              {
+ 459   3                                                      WriteRelayValues.IgnitionDuration = stRecordInfo.IgnitionDuration;
+ 460   3                                                      RcvdData = strtok(NULL,",");
+ 461   3                                                      stRecordInfo.Testduration =(atoi(RcvdData));
+ 462   3                                                      if(stRecordInfo.Testduration >0 && stRecordInfo.Testduration <=120)
+ 463   3                                                      {
+ 464   4                                                              WriteRelayValues.Testduration = stRecordInfo.Testduration;
+ 465   4                                                              RcvdData = strtok(NULL,",");
+ 466   4                                                              WriteRelayValues.K1StartTime = atol(RcvdData);
+ 467   4                                                              RcvdData = strtok(NULL,",");
+ 468   4                                                              WriteRelayValues.K1StopTime = atol(RcvdData);
+ 469   4                                                              if(WriteRelayValues.K1StartTime >=MIN_K1_START_TIME && WriteRelayValues.K1StartTime <=MAX_K1_START_
+             -TIME)
+ 470   4                                                              {
+ 471   5                                                                      RcvdData = strtok(NULL,",");
+ 472   5                                                                      if(RcvdData == '\0')
+ 473   5                                                                              return 0;
+ 474   5                                                                      WriteRelayValues.K2StartTime = atol(RcvdData);
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 9   
+
+ 475   5                                                                      RcvdData = strtok(NULL,",");
+ 476   5                                                                      if(RcvdData == '\0')
+ 477   5                                                                              return 0;
+ 478   5                                                                      WriteRelayValues.K2StopTime = atol(RcvdData);
+ 479   5                                                                      if(WriteRelayValues.K2StartTime >=MIN_K2_START_TIME && WriteRelayValues.K2StartTime <=MAX_K2_START
+             -_TIME)
+ 480   5                                                                      {                                                       
+ 481   6                                                                              RcvdData = strtok(NULL,",");
+ 482   6                                                                              WriteRelayValues.K3StartTime = atol(RcvdData);
+ 483   6                                                                              RcvdData = strtok(NULL,",");
+ 484   6                                                                              WriteRelayValues.K3StopTime = atol(RcvdData);
+ 485   6                                                                              if(WriteRelayValues.K3StartTime >=MIN_K3_START_TIME && WriteRelayValues.K3StartTime <=MAX_K3_STAR
+             -T_TIME)
+ 486   6                                                                              {
+ 487   7                                                                                      RcvdData = strtok(NULL,",");
+ 488   7                                                                                      WriteRelayValues.PRStart = atol(RcvdData);
+ 489   7                                                                                      RcvdData = strtok(NULL,",");
+ 490   7                                                                                      WriteRelayValues.PRDuration = atol(RcvdData);
+ 491   7                                                                                      RcvdData = strtok(NULL,",");
+ 492   7                                                                                      WriteRelayValues.PRCount = atoi(RcvdData);
+ 493   7                                                                                      RcvdData = strtok(NULL,",");
+ 494   7                                                                                      WriteRelayValues.Interval = atol(RcvdData);
+ 495   7                                                                                      if(WriteRelayValues.Interval >=MIN_PR_INTERVAL_TIME && WriteRelayValues.Interval <=MAX_PR_INTERV
+             -AL_TIME)
+ 496   7                                                                                      {
+ 497   8                                                                                              if((WriteRelayValues.PRStart+(WriteRelayValues.PRCount*WriteRelayValues.Interval) - WriteRelayV
+             -alues.PRDuration) <120000)
+ 498   8                                                                                              {
+ 499   9                                                                                                      RcvdData = strtok(NULL,",");
+ 500   9                                                                                                      if(RcvdData != NULL)  //section selection
+ 501   9                                                                                                      {
+ 502  10                                                                                                              WriteRelayValues.FirstSection = atoi(RcvdData);
+ 503  10                                                                                                      }
+ 504   9      
+ 505   9                                                                                                      RcvdData = strtok(NULL,",");
+ 506   9                                                                                                      if(RcvdData != NULL)
+ 507   9                                                                                                      {
+ 508  10                                                                                                              WriteRelayValues.SecondSection = atoi(RcvdData);        
+ 509  10                                                                                                      }
+ 510   9      //added on 17august 6.18
+ 511   9                                                                              //                      WriteRelayValues.Section1 = 0x01;
+ 512   9                                                                              //                      WriteRelayValues.Section1 = 0x02;
+ 513   9                                                                                                      FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+ 514   9                                                                                                      FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay))
+             -;
+ 515   9                                                                                                      PutStringOnRS232(ACK);
+ 516   9                                                                                              }
+ 517   8                                                                                              else    //testduration <12000
+ 518   8                                                                                                      PutStringOnRS232(NACK); 
+ 519   8                                                                                      }
+ 520   7                                                                                      else //interval condition
+ 521   7                                                                                              PutStringOnRS232(NACK); 
+ 522   7                                                                              }
+ 523   6                                                                              else //k3 Relay condition
+ 524   6                                                                                      PutStringOnRS232(NACK); 
+ 525   6                                                                      }
+ 526   5                                                                      else //k2 relay condition
+ 527   5                                                                              PutStringOnRS232(NACK); 
+ 528   5                                                              }
+ 529   4                                                              else  //k1 condition
+ 530   4                                                                      PutStringOnRS232(NACK);
+ 531   4                                                      }
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 10  
+
+ 532   3                                                      else //test duration
+ 533   3                                                              PutStringOnRS232(NACK);
+ 534   3                                              }
+ 535   2                                              else //ignition duration
+ 536   2                                                      PutStringOnRS232(NACK);
+ 537   2                      break;
+ 538   2                      case 'T' :  // Start Test
+ 539   2                                              Remote =1;
+ 540   2                                              /*****************************************/ //added on 13 july
+ 541   2                                              FileName= ReadDirectory();
+ 542   2                                              if(FileName == -1)
+ 543   2                                              {
+ 544   3                                                      PutStringOnRS232("There are No Records Available");
+ 545   3                                                      return 0;
+ 546   3                                              }
+ 547   2                                              RcvdData = strtok(RcvdBuffer+7,",");
+ 548   2                                              strcpy(stRecordInfo.Battery1Type,RcvdData);
+ 549   2      //added
+ 550   2                                              for(BatteryIndex =1;BatteryIndex <=10;BatteryIndex++)
+ 551   2                                              {
+ 552   3                                                              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 553   3                                                              if((strncmp(ReadRelayValues.BatteryName,RcvdData,7)) == 0)
+ 554   3                                                                      break;
+ 555   3                                              }
+ 556   2                                              RcvdData = strtok(NULL,","); 
+ 557   2                                              if(*RcvdData !='\0')
+ 558   2                                                      strcpy(stRecordInfo.SerialNumber,RcvdData);
+ 559   2                                              else
+ 560   2                                              {
+ 561   3                                                      PutStringOnRS232(NACK);
+ 562   3                                                      return 0;
+ 563   3                                              }
+ 564   2                                              RcvdData = strtok(NULL,","); 
+ 565   2                                              stRecordInfo.TestCondition = (unsigned char)atoi(RcvdData);
+ 566   2                                              if(stRecordInfo.TestCondition >0 && stRecordInfo.TestCondition <=20)
+ 567   2                                              {
+ 568   3                                                      FLASH_Read  (RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 569   3                                                      stRecordInfo.Testduration=ReadRelayValues.Testduration;
+ 570   3                                                      stRecordInfo.IgnitionDuration=ReadRelayValues.IgnitionDuration;
+ 571   3                                                      stRecordInfo.FirstSection = ReadRelayValues.FirstSection;
+ 572   3                                                      stRecordInfo.SecondSection = ReadRelayValues.SecondSection;
+ 573   3      
+ 574   3                                                      if(stRecordInfo.Testduration*1000 <=120000)
+ 575   3                                                      {
+ 576   4                                                              LCDInstWrite(LCD_BLINKING_OFF);
+ 577   4                                                              PutStringOnRS232(ACK);
+ 578   4                                                              TestProcessing();
+ 579   4                                                              PutStringOnRS232(TESTOK);
+ 580   4                                                              Remote =0;
+ 581   4                                                      }
+ 582   3                                                      else
+ 583   3                                                              PutStringOnRS232("Invalid TestDuration");
+ 584   3                                                              
+ 585   3                                              }
+ 586   2                                              else
+ 587   2                                                      PutStringOnRS232(NACK);
+ 588   2                      break;
+ 589   2                      case 'K' : //  Set Relay  Configurations
+ 590   2                                              RcvdData = strtok(RcvdBuffer+7,",");
+ 591   2                                              strcpy(stRecordInfo.Battery1Type,RcvdData);
+ 592   2      
+ 593   2                                              for(BatteryIndex =1;BatteryIndex <=10;BatteryIndex++)
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 11  
+
+ 594   2                                              {
+ 595   3                                                              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 596   3                                                              if((strncmp(ReadRelayValues.BatteryName,RcvdData,7)) == 0)
+ 597   3                                                                      break;
+ 598   3                                              }
+ 599   2                                      //      FLASH_Read(RELAY_DATA_ADDRESS(BatType), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 600   2                                              Len=sprintf(TxdBuffer,"K%7s,",stRecordInfo.Battery1Type);
+ 601   2                                              Len+=sprintf(TxdBuffer+Len,"%04ld,%04ld,",(unsigned long)ReadRelayValues.IgnitionDuration,(unsigned l
+             -ong)ReadRelayValues.Testduration);
+ 602   2                                              Len+=sprintf(TxdBuffer+Len,"%04ld,%04ld,",(unsigned long)ReadRelayValues.K1StartTime,(unsigned long)R
+             -eadRelayValues.K1StopTime);
+ 603   2                                              Len+=sprintf(TxdBuffer+Len,"%04ld,%04ld,",(unsigned long)ReadRelayValues.K2StartTime,(unsigned long)R
+             -eadRelayValues.K2StopTime);
+ 604   2                                              Len+=sprintf(TxdBuffer+Len,"%04ld,%04ld,",(unsigned long)ReadRelayValues.K3StartTime,(unsigned long)R
+             -eadRelayValues.K3StopTime);
+ 605   2                                              Len+=sprintf(TxdBuffer+Len,"%04ld,%04ld,%02d,%04ld,",(unsigned long)ReadRelayValues.PRStart,(unsigned
+             - long)ReadRelayValues.PRDuration,ReadRelayValues.PRCount,(unsigned long)ReadRelayValues.Interval);
+ 606   2                                              Len+=sprintf(TxdBuffer+Len,"%02d,%02d",(unsigned int)ReadRelayValues.FirstSection,(unsigned int)ReadR
+             -elayValues.SecondSection);
+ 607   2                                              SendDataToRS232(TxdBuffer);
+ 608   2                      break;
+ 609   2                      case 'N': //Add new battery 
+ 610   2                                              RcvdBuffer[14] = '\0';
+ 611   2                                              strcpy(WriteRelayValues.BatteryName,&RcvdBuffer[7]);
+ 612   2                                              if((strncmp(WriteRelayValues.BatteryName,"ECT-",4)) == 0)
+ 613   2                                              {
+ 614   3                                                      for(BatteryIndex=1;BatteryIndex<=10;BatteryIndex++)
+ 615   3                                                      {
+ 616   4                                                              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 617   4                                                              if((strcmp(ReadRelayValues.BatteryName,WriteRelayValues.BatteryName)) == 0)
+ 618   4                                                                      break;
+ 619   4                                                              if((strncmp(ReadRelayValues.BatteryName,"ECT-",4)) == 0)
+ 620   4                                                                      continue;
+ 621   4                                                              else
+ 622   4                                                              {
+ 623   5                                                                      FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+ 624   5                                                                      memset(&WriteRelayValues,0,sizeof(struct Relay));
+ 625   5                                                                      WriteRelayValues.FirstSection = 0x01;
+ 626   5                                                                      strcpy(WriteRelayValues.BatteryName,&RcvdBuffer[7]);
+ 627   5                                                                      FLASH_Write(RELAY_DATA_ADDRESS(BatteryIndex),(char*)&WriteRelayValues,sizeof(WriteRelayValues));
+ 628   5                                                                      PutStringOnRS232(ACK);
+ 629   5                                                                      return 0;
+ 630   5                                                              }
+ 631   4                                                      }                       
+ 632   3                                              }
+ 633   2                                              PutStringOnRS232(NACK);
+ 634   2                      break;
+ 635   2                      case 'U':  //set active batteries
+ 636   2                                              RcvdData = strtok(RcvdBuffer+7,",");
+ 637   2                                              if(RcvdData != '\0')
+ 638   2                                                      strcpy(ActiveBat1Info,RcvdData);
+ 639   2                                              RcvdData = strtok(NULL,",");
+ 640   2                                              if(RcvdData != '\0')
+ 641   2                                                      strcpy(ActiveBat2Info,RcvdData);
+ 642   2                                              FLASH_PageErase(ACTIVE_BATTERIES_INFO);
+ 643   2                                              FLASH_Write(ACTIVE_BATTERY1_INFO,ActiveBat1Info,strlen(ActiveBat1Info)+1);
+ 644   2                                              FLASH_Write(ACTIVE_BATTERY2_INFO,ActiveBat2Info,strlen(ActiveBat2Info)+1);
+ 645   2                                              PutStringOnRS232(ACK);
+ 646   2      
+ 647   2                      break;
+ 648   2                      case 'V':  //Get Active Batteries
+ 649   2                                              Len =0;
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 12  
+
+ 650   2                                              GetActiveBatteries();
+ 651   2                                              if((strncmp(ActiveBat2Info,"ECT-",4)) != 0)
+ 652   2                                              {
+ 653   3                                                      PutStringOnRS232(NACK);
+ 654   3                                                      return 0;
+ 655   3                                              }
+ 656   2                                              if((strncmp(ActiveBat1Info,"ECT-",4)) != 0)
+ 657   2                                              {
+ 658   3                                                      PutStringOnRS232(NACK);
+ 659   3                                                      return 0;
+ 660   3                                              }
+ 661   2                                              Temp = 0;
+ 662   2                                              for(BatteryIndex=1;BatteryIndex<=10;BatteryIndex++)
+ 663   2                                              {
+ 664   3                                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 665   3                                                      if((strncmp(ReadRelayValues.BatteryName,ActiveBat1Info,7)) == 0)
+ 666   3                                                                      Temp |= 0x01;
+ 667   3                                                      if((strncmp(ReadRelayValues.BatteryName,ActiveBat2Info,7)) == 0)
+ 668   3                                                                      Temp |= 0x02;
+ 669   3                                              }
+ 670   2                                              if(Temp == 0x03)
+ 671   2                                              {                                       
+ 672   3                                              
+ 673   3                                                      Len=sprintf(TxdBuffer,"V%7s,",ActiveBat1Info);
+ 674   3                                                      Len=sprintf(TxdBuffer+Len,"%7s",ActiveBat2Info);
+ 675   3                                                      SendDataToRS232(TxdBuffer);
+ 676   3                                              }
+ 677   2                                              else
+ 678   2                                                      PutStringOnRS232(NACK);
+ 679   2                                              
+ 680   2                      break;
+ 681   2                      case 'B':  //Get Batteries list
+ 682   2                              Len =1;
+ 683   2                              TxdBuffer[0] = 'B';
+ 684   2                              for(BatteryIndex=1;BatteryIndex<=10;BatteryIndex++)
+ 685   2                              {
+ 686   3                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 687   3                                      if((strncmp(ReadRelayValues.BatteryName,"ECT-",4)) == 0)
+ 688   3                                              Len+=sprintf(TxdBuffer+Len,"%7s,",ReadRelayValues.BatteryName);
+ 689   3                              }
+ 690   2                              TxdBuffer[Len-1]= '\0';
+ 691   2                              if(Len >1)
+ 692   2                                      SendDataToRS232(TxdBuffer);
+ 693   2                              else 
+ 694   2                                      PutStringOnRS232(NACK);
+ 695   2                      break;
+ 696   2                      case 'E':       //Delete Battery
+ 697   2                              TxdBuffer[0] = '\0';
+ 698   2                              strncat(TxdBuffer,RcvdBuffer+7,7);
+ 699   2                              for(BatteryIndex=1;BatteryIndex<=10;BatteryIndex++)
+ 700   2                              {
+ 701   3                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 702   3                                      if((strcmp(ReadRelayValues.BatteryName,TxdBuffer)) == 0)
+ 703   3                                      {
+ 704   4                                              FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+ 705   4                                              PutStringOnRS232(ACK);
+ 706   4                                              return 0;
+ 707   4                                      }
+ 708   3                              }
+ 709   2                              PutStringOnRS232(NACK);
+ 710   2                      break;
+ 711   2                      case 'M':       //Rename Battery
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 13  
+
+ 712   2                              RcvdData = strtok(RcvdBuffer+7,",");
+ 713   2                              if(RcvdData != '\0')
+ 714   2                                      strcpy(TxdBuffer,RcvdData);
+ 715   2                              if((strncmp(TxdBuffer,"ECT-",4)) != 0)
+ 716   2                              {
+ 717   3                                      PutStringOnRS232(NACK);
+ 718   3                                      return 0;
+ 719   3                              }
+ 720   2      
+ 721   2                              RcvdData = strtok(NULL,",");
+ 722   2                              if(RcvdData != '\0')
+ 723   2                              {
+ 724   3                                      for(BatteryIndex=1;BatteryIndex<=10;BatteryIndex++)
+ 725   3                                      {
+ 726   4                                              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 727   4                                              if((strcmp(ReadRelayValues.BatteryName,TxdBuffer)) == 0)
+ 728   4                                              {
+ 729   5                                                      FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+ 730   5                                                      WriteRelayValues.K1StartTime = ReadRelayValues.K1StartTime;
+ 731   5                                                      WriteRelayValues.K1StopTime = ReadRelayValues.K1StopTime;
+ 732   5                                                      WriteRelayValues.K2StartTime = ReadRelayValues.K2StartTime;
+ 733   5                                                      WriteRelayValues.K2StopTime = ReadRelayValues.K2StopTime;
+ 734   5                                                      WriteRelayValues.K3StartTime = ReadRelayValues.K3StartTime;
+ 735   5                                                      WriteRelayValues.K3StopTime = ReadRelayValues.K3StopTime;
+ 736   5                                                      WriteRelayValues.PRStart = ReadRelayValues.PRStart;
+ 737   5                                                      WriteRelayValues.PRDuration = ReadRelayValues.PRDuration;
+ 738   5                                                      WriteRelayValues.PRCount = ReadRelayValues.PRCount;
+ 739   5                                                      WriteRelayValues.Interval = ReadRelayValues.Interval;
+ 740   5                                                      WriteRelayValues.IgnitionDuration = ReadRelayValues.IgnitionDuration;
+ 741   5                                                      WriteRelayValues.Testduration = ReadRelayValues.Testduration;
+ 742   5                                                      WriteRelayValues.FirstSection = ReadRelayValues.FirstSection;
+ 743   5                                                      WriteRelayValues.SecondSection = ReadRelayValues.SecondSection;
+ 744   5      
+ 745   5                                                      strcpy(WriteRelayValues.BatteryName,RcvdData);
+ 746   5                                                      if((strcmp(TxdBuffer,ActiveBat1Info)) == 0)
+ 747   5                                                      {
+ 748   6                                                              strcpy(ActiveBat1Info,WriteRelayValues.BatteryName);
+ 749   6                                                              FLASH_PageErase(ACTIVE_BATTERIES_INFO);
+ 750   6                                                              FLASH_Write(ACTIVE_BATTERY1_INFO,ActiveBat1Info,strlen(ActiveBat1Info)+1);
+ 751   6                                                              FLASH_Write(ACTIVE_BATTERY2_INFO,ActiveBat2Info,strlen(ActiveBat2Info)+1);
+ 752   6                                                      }
+ 753   5                                                      if((strcmp(TxdBuffer,ActiveBat2Info)) == 0)
+ 754   5                                                      {
+ 755   6                                                              strcpy(ActiveBat2Info,WriteRelayValues.BatteryName);
+ 756   6                                                              FLASH_PageErase(ACTIVE_BATTERIES_INFO);
+ 757   6                                                              FLASH_Write(ACTIVE_BATTERY1_INFO,ActiveBat1Info,strlen(ActiveBat1Info)+1);
+ 758   6                                                              FLASH_Write(ACTIVE_BATTERY2_INFO,ActiveBat2Info,strlen(ActiveBat2Info)+1);
+ 759   6                                                      }
+ 760   5                                      
+ 761   5                                                      FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay));
+ 762   5      
+ 763   5                                              //      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 764   5                                                      PutStringOnRS232(ACK);
+ 765   5                                                      return 0;
+ 766   5                                              }
+ 767   4                                      }
+ 768   3                              }
+ 769   2                              PutStringOnRS232(NACK);
+ 770   2      
+ 771   2                      break;
+ 772   2                      default:                //Error Message 
+ 773   2                              PutStringOnRS232(NACK); //nack
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 14  
+
+ 774   2                      break;
+ 775   2              }
+ 776   1      
+ 777   1      }
+ 778          //get active batteries
+ 779          void GetActiveBatteries()
+ 780          {
+ 781   1              FLASH_Read(ACTIVE_BATTERY1_INFO,ActiveBat1Info,sizeof(ActiveBat1Info));
+ 782   1              FLASH_Read(ACTIVE_BATTERY2_INFO,ActiveBat2Info,sizeof(ActiveBat2Info));
+ 783   1      }
+ 784          
+ 785          
+ 786          unsigned char Checksum(unsigned char *cbuffer) 
+ 787          {
+ 788   1          unsigned char csum; 
+ 789   1          csum =0;
+ 790   1              while(*cbuffer !='\0')
+ 791   1              csum^=*cbuffer++;
+ 792   1          return csum;
+ 793   1      }
+ 794          
+ 795          
+ 796          void PutCharOnRS232(unsigned char value)
+ 797          {
+ 798   1              char SFRPAGE_SAVE = SFRPAGE;
+ 799   1              SFRPAGE = UART0_PAGE;
+ 800   1              TI0 = 0;
+ 801   1              SBUF0 = value;
+ 802   1      
+ 803   1              while(TI0 != 1);
+ 804   1              TI0 = 0;
+ 805   1              SFRPAGE = SFRPAGE_SAVE;
+ 806   1      }
+ 807          
+ 808          void SendDataToRS232(unsigned char *TxBuffer)
+ 809          {
+ 810   1               unsigned char MsgLength;
+ 811   1               unsigned char xdata TempBuf[10];
+ 812   1      
+ 813   1               PutCharOnRS232(SOM);
+ 814   1               MsgLength = strlen(TxBuffer);
+ 815   1               sprintf(TempBuf,"%06d",(unsigned int)MsgLength);
+ 816   1               PutStringOnRS232(TempBuf);
+ 817   1               PutStringOnRS232(TxBuffer);
+ 818   1               PutCharOnRS232(Checksum(TxBuffer));
+ 819   1      }
+ 820          
+ 821          
+ 822          
+ 823          void ReadRecordLists()
+ 824          {
+ 825   1              unsigned char Records;
+ 826   1              unsigned long idata MsgLength=0;
+ 827   1              unsigned char ChkSum=0;
+ 828   1          PutCharOnRS232(SOM);
+ 829   1          
+ 830   1              for(Records=1;Records<MAX_RECORDS;Records++)
+ 831   1              {
+ 832   2                      FLASH_Read( DATA_RECORD_ADDRESS(Records),(char*) &stRecordReadInfo,sizeof(struct Record));
+ 833   2                      if(strncmp(stRecordReadInfo.Battery1Type,"ECT-",4) == 0 )
+ 834   2                      {
+ 835   3                              stRecordReadInfo.SerialNumber[11] = '\0';
+C51 COMPILER V7.05   UART                                                                  10/15/2019 17:32:07 PAGE 15  
+
+ 836   3                              MsgLength+=sprintf(TxdBuffer,"%11s,",stRecordReadInfo.SerialNumber);
+ 837   3      
+ 838   3                              MsgLength+=sprintf(TxdBuffer,"%02x%02x%04x",(unsigned int)stRecordReadInfo.Date.Day,(unsigned int)stRec
+             -ordReadInfo.Date.Month,(unsigned int)stRecordReadInfo.Date.Year);
+ 839   3                              MsgLength+=sprintf(TxdBuffer,"%02x%02x%02x,",(unsigned int)stRecordReadInfo.Time.Hours,(unsigned int)st
+             -RecordReadInfo.Time.Minutes,(unsigned int)stRecordReadInfo.Time.Seconds);
+ 840   3                      }
+ 841   2              }
+ 842   1              MsgLength++; //for adding L to msgelngth
+ 843   1              sprintf(TxdBuffer,"%06d",(unsigned int)MsgLength);
+ 844   1              if(MsgLength >1)
+ 845   1              {
+ 846   2                      PutStringOnRS232(TxdBuffer);
+ 847   2                      PutCharOnRS232('L');
+ 848   2                      MsgLength =0;
+ 849   2                      for(Records=1;Records<MAX_RECORDS;Records++)
+ 850   2                      {
+ 851   3                              FLASH_Read( DATA_RECORD_ADDRESS(Records),(char*) &stRecordReadInfo,sizeof(struct Record));
+ 852   3                              if(strncmp(stRecordReadInfo.Battery1Type,"ECT-",4) == 0)
+ 853   3                              {
+ 854   4                                      stRecordReadInfo.SerialNumber[11] = '\0';
+ 855   4                                      MsgLength=sprintf(TxdBuffer,"%11s,",stRecordReadInfo.SerialNumber);
+ 856   4                                      MsgLength+=sprintf(TxdBuffer+MsgLength,"%02x%02x%04x",(unsigned int)stRecordReadInfo.Date.Day,(unsigne
+             -d int)stRecordReadInfo.Date.Month,(unsigned int)stRecordReadInfo.Date.Year);
+ 857   4                                      MsgLength+=sprintf(TxdBuffer+MsgLength,"%02x%02x%02x,",(unsigned int)stRecordReadInfo.Time.Hours,(unsi
+             -gned int)stRecordReadInfo.Time.Minutes,(unsigned int)stRecordReadInfo.Time.Seconds);
+ 858   4                                      ChkSum ^=Checksum(TxdBuffer);
+ 859   4                                      PutStringOnRS232(TxdBuffer);
+ 860   4                                      MsgLength=0;
+ 861   4                              }
+ 862   3                      }
+ 863   2                      PutCharOnRS232(ChkSum ^'L');
+ 864   2      
+ 865   2              }
+ 866   1              else
+ 867   1                      PutStringOnRS232(NACK);
+ 868   1      }               
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   8066    ----
+   CONSTANT SIZE    =    290    ----
+   XDATA SIZE       =    910      10
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      1      36
+   IDATA SIZE       =   ----       6
+   BIT SIZE         =      3       1
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

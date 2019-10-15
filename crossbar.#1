@@ -1,0 +1,211 @@
+/*==============================================================================================*/
+/* RIGHTS      : Acorn Embedded Systems India (Pvt) Ltd.
+			       www.acornindia.com       
+/* Description:Intilaze controlelr pheriperals                                                    */
+/* Developed by: Nagarjuna Reddy.G,
+				 nagarjuna@sorokasoft.com
+/* HISTORY     : V1.00    AA    10-DEC-2005
+/*================================================================================================= */
+
+#include <functions.h>
+#include "Record.h"
+
+#ifdef EXTERNAL_CLK
+	#define ONE_MILII_SEC_MSB  0xF8 //0xF8 for 24mhz clock
+	#define ONE_MILLI_SEC_LSB  0xCD //0x30
+#else
+	#define ONE_MILII_SEC_MSB  0xE3 
+	#define ONE_MILLI_SEC_LSB  0x31 
+#endif
+
+volatile unsigned long ullTimeInMilliseconds=0;
+extern volatile unsigned long idata TestDuration;
+volatile bit OneMilliSecBit=0;
+volatile bit IgniterFlag =0;
+
+extern struct Relay xdata ReadRelayValues;
+
+void SYSCLKInit(void)
+{
+#ifdef EXTERNAL_CLK
+    int i = 0;
+    SFRPAGE   = CONFIG_PAGE;
+    OSCXCN    = 0x67;
+    for (i = 0; i < 3000; i++);  // Wait 1ms for initialization
+    while ((OSCXCN & 0x80) == 0);
+    CLKSEL    = 0x01;
+	OSCICN = 0x00; 					// Disable the internal osc.
+#else  //external clock *4=8847360
+    int i = 0;
+    SFRPAGE   = CONFIG_PAGE;
+    OSCXCN    = 0x67;
+    for (i = 0; i < 3000; i++);  // Wait 1ms for initialization
+    while ((OSCXCN & 0x80) == 0);
+    PLL0CN    = 0x04;
+    CCH0CN    &= ~0x20;
+    SFRPAGE   = LEGACY_PAGE;
+    FLSCL     = 0xB0;
+    SFRPAGE   = CONFIG_PAGE;
+    CCH0CN    |= 0x20;
+    PLL0CN    |= 0x01;
+    PLL0DIV   = 0x01;
+    PLL0FLT   = 0x01;
+    PLL0MUL   = 0x04;
+    for (i = 0; i < 15; i++);  // Wait 5us for initialization
+    PLL0CN    |= 0x02;
+    while ((PLL0CN & 0x10) == 0);
+    CLKSEL    = 0x02;
+    OSCICN    = 0x00;
+#endif
+
+
+}
+
+
+void PortIOInit()
+{
+    // P0.0  -  TX0 (UART0), Push-Pull,  Digital
+    // P0.1  -  RX0 (UART0), Open-Drain, Digital
+    // P0.2  -  SCK  (SPI0), Push-Pull,  Digital
+    // P0.3  -  MISO (SPI0), Open-Drain, Digital
+    // P0.4  -  MOSI (SPI0), Push-Pull,  Digital
+    // P0.5  -  NSS  (SPI0), Push-Pull,  Digital
+    // P0.6  -  SDA (SMBus), Open-Drain, Digital
+    // P0.7  -  SCL (SMBus), Open-Drain, Digital
+
+    // P1.0  -  TX1 (UART1), Push-Pull,  Digital
+    // P1.1  -  RX1 (UART1), Open-Drain, Digital
+
+    SFRPAGE   = CONFIG_PAGE;
+    P0MDOUT   = 0x35;
+    P1MDOUT   = 0x01;
+	P2MDOUT   = 0xFF;
+	P1MDOUT  |= 0xF0;
+	P4MDOUT   = 0xFF; 		// Output configuration for P4 
+
+    XBR0      = 0x07;
+    XBR2      = 0x44;
+	XBR1	  = 0x04; //Enable Int0 interrupt pin  p1.2
+
+}
+//when Igniter button is pressed igniter flag enabled
+void ExternalInt0Isr() interrupt 0
+{
+	IgniterFlag =1;
+}
+
+//Disable Watch dog timer
+void ConfigWatchDogTimer()
+{
+	SFRPAGE = CONFIG_PAGE;
+ 	WDTCN = 0xDE;                       // disable watchdog timer
+    WDTCN = 0xAD;
+}
+//system clock is 24Mhz 
+//timer4 uses system/12= 2mhz.
+//for 1msec= 1000usec/0.5usec= 65536-Value= 0xF830
+
+void Timer4neMsecInterruptInit()  //Timer4 
+{
+	char SFRPAGE_SAVE = SFRPAGE;
+
+	 SFRPAGE   = TMR4_PAGE;
+	 RCAP4L    = ONE_MILLI_SEC_LSB;
+     RCAP4H    = ONE_MILII_SEC_MSB;   	//Reload value for 1 msec interrupt
+
+     TMR4L     = ONE_MILLI_SEC_LSB;
+     TMR4H     = ONE_MILII_SEC_MSB;   	//Reload value for 1 msec interrupt
+//	 TMR4CN    = 0x04;  				//run Timer4  ,auto reload mode
+     EIE2     |= 0x04;					//Enable Timer4 interrupt
+
+	SFRPAGE = SFRPAGE_SAVE;
+}
+//1 milli second interrupt service routine and check all relay settings
+void OneMilliSecISR() interrupt 16 //Timer4
+{
+	char SFRPAGE_SAVE;
+static 	unsigned char Count=1;
+static unsigned long PRTime=0;
+
+//	TMR4CN    &= ~0x04;  //Disable Timer4
+	TF4 =0;
+	if(ullTimeInMilliseconds <= ReadRelayValues.IgnitionDuration) //IgnitionDuration)
+	{
+		SOLID_STATE_RELAY =1;   //Relay on
+	}
+	else
+	{
+	 	SOLID_STATE_RELAY =0;  //Relay off
+	}
+	
+	if(ullTimeInMilliseconds == ReadRelayValues.K1StartTime)
+			K1RELAY = 1;
+	if(ullTimeInMilliseconds == ReadRelayValues.K1StopTime)
+			K1RELAY = 0;
+	if(ReadRelayValues.PRCount)
+	{
+			PRTime = ReadRelayValues.PRStart+ReadRelayValues.Interval *(Count-1);
+			if(ullTimeInMilliseconds == PRTime)
+				PULSE_RELAY =1; //PULSE RELAY ON  
+			if(ullTimeInMilliseconds == PRTime+ReadRelayValues.PRDuration)
+			{
+				PULSE_RELAY =0;  //PULSE RELAY OFF
+				Count++;
+				ReadRelayValues.PRCount--;
+			}
+	}
+	if(ullTimeInMilliseconds == ReadRelayValues.K2StartTime)
+		K2RELAY = 1;
+	if(ullTimeInMilliseconds == ReadRelayValues.K2StopTime)
+		K2RELAY = 0;
+	if(ullTimeInMilliseconds == ReadRelayValues.K3StartTime)
+		K3RELAY = 1;
+	if(ullTimeInMilliseconds == ReadRelayValues.K3StopTime)
+		K3RELAY = 0;
+
+	
+	ullTimeInMilliseconds++;
+	TestDuration--;
+	if(TestDuration ==0)
+	{
+		SFRPAGE_SAVE = SFRPAGE;
+		SFRPAGE = TMR3_PAGE;
+		TR3 =0;					//stop timer
+		SFRPAGE = SFRPAGE_SAVE;
+		SFRPAGE_SAVE = SFRPAGE;
+		SFRPAGE = TMR4_PAGE;
+		TR4    = 0;  			//run Timer4  ,auto reload mode
+		SFRPAGE = SFRPAGE_SAVE;
+		Count =1;
+		PRTime =0;
+	}
+	
+
+//Intialze the controller pheriperals
+}
+void CygnalInit()
+{
+	SFRPAGE = CONFIG_PAGE;
+	OUTPUT_LATCH_ENABLE = 0;	
+	IGNITER_ENABLE  =   1;
+	START_SWITCH	= 	0;  //pull up mode
+	READY_LED		= 	0;  //open drain mode
+	DAQ_LED		    = 	0;  //open drain mode
+	SOLID_STATE_RELAY= 	0; //
+ 	PULSE_RELAY		= 	0; 	//DPDT
+	K1RELAY			= 	0;
+	K2RELAY			= 	0;
+	K3RELAY			= 	0;
+	K1RELAY			= 	0;
+	ConfigWatchDogTimer();
+	SYSCLKInit();
+	
+	Init_SPI( );
+	PortIOInit();
+	UART0_Init();
+	UART1_Init();
+	SMBInit();
+	Timer4neMsecInterruptInit();
+
+}
+	

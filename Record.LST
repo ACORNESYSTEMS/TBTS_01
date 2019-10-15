@@ -1,0 +1,80 @@
+C51 COMPILER V7.05   RECORD                                                                09/04/2007 14:13:00 PAGE 1   
+
+
+C51 COMPILER V7.05, COMPILATION OF MODULE RECORD
+OBJECT MODULE PLACED IN Record.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.exe Record.h DB OE
+
+stmt level    source
+
+   1          //Records header file
+   2          
+   3          #ifndef RECORD_H
+   4          #define RECORD_H
+   5          
+   6          struct Record
+   7          {
+   8                  unsigned char SerialNumber[12];
+   9                  unsigned char Battery1Type[12];
+  10                  unsigned char TestCondition;
+  11                  unsigned char FileName;
+  12                  unsigned long NoOfBytes;
+  13                  unsigned long Testduration;
+  14                  unsigned int IgnitionDuration;
+  15          
+  16                  struct
+  17                  {
+  18                          unsigned char Seconds;
+  19                          unsigned char Minutes;
+  20                          unsigned char Hours;
+  21                  }Time;
+  22                  struct
+  23                  {
+  24                          unsigned int Year;
+  25                          unsigned char Day;
+  26                          unsigned char Month;
+  27                  }Date;
+  28                  unsigned char FirstSection;
+  29                  unsigned char SecondSection;
+  30          };
+  31          
+  32          struct Relay
+  33          {
+  34                  unsigned long K1StartTime;
+  35                  unsigned long K1StopTime;
+  36                  unsigned long K2StartTime;
+  37                  unsigned long K2StopTime;
+  38                  unsigned long K3StartTime;
+  39                  unsigned long K3StopTime;
+  40                  unsigned long PRStart;
+  41                  unsigned long PRDuration;
+  42                  unsigned int PRCount;
+  43                  unsigned int IgnitionDuration;
+  44                  unsigned long Interval;
+  45                  unsigned long Testduration;
+  46                  unsigned char BatteryName[12];
+  47                  unsigned char FirstSection;
+  48                  unsigned char SecondSection;
+  49                  
+  50          };
+  51          
+  52          #endif
+  53          //unsigned char xdata BatteryInfo[10][12];
+  54          
+  55          
+C51 COMPILER V7.05   RECORD                                                                09/04/2007 14:13:00 PAGE 2   
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   ----    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

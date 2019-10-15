@@ -1,0 +1,2042 @@
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 1   
+
+
+C51 COMPILER V7.05, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE main.c DB OE BR INCDIR(C:\SiLabs\MCU\Inc)
+
+stmt level    source
+
+   1          
+   2          /*
+   3                  Project         : TBTS(Thermal Battery Test System), ECIL
+   4                  File Name       : main.c
+   5                  Description     : Thermal Batteries are primary reserve batteries that are solid state at normal 
+   6                                            temperature.For many years,they have been the first choice of power supply for
+   7                                            guided missiles and nuclear weapons.They use an electrolyte, such as a mixture of
+   8                                            lithium chloride and potassium chloride.
+   9                  Advantages      : 
+  10                                                  1.Able withstand severe mechanical stresses of acceleration,shock,vibration and spin.
+  11                                                  2.Rugged
+  12                                                  3.safe
+  13                                                  4.High power and energy densities
+  14                                                  5.Instantaneous activation
+  15                                                  6.No maintenance
+  16                  Disadvantage:
+  17                                                  1.Expensive
+  18                  Applications :
+  19                                                  1.Military applications
+  20                                                  2.Missiles
+  21                                                  3.Weapons systems.
+  22                  Measurements: Connect the Battery Terminals to the DAQ module and follow the operation procedures.
+  23                  Interfaces      : 
+  24                                                  1.24x2 LCD Interface
+  25                                                  2.4x4 Keys Interface
+  26                                                  3.12Bit-ADC0 4-channel Interfaces
+  27                                                  4.RS-232 Interfaces
+  28                                                  5.8 Digital Relay Outputs
+  29                                                  6.16 OptoIsolator Inputs
+  30                                                  7.Flash Memory Interface (M25p32 4MB flash).
+  31                  Created On      : 23-June-2006
+  32                  Modified On     : 30-August-2006
+  33                  Version         : 3.3           
+  34                          Copyright © 2006 www.sorokasoft.com
+  35           
+  36          */
+  37          
+  38          #include <functions.h>
+  39          #include <stdlib.h>
+  40          #include "Record.h"
+  41          #include "ds1307.h"
+  42          #include "lcd.h"
+  43          
+  44          
+  45          
+  46          #define ADC_RES_TEN_VOLTS 0.00030517578125  
+  47          
+  48          extern enum Screens MMI_screen;
+  49          extern struct Relay xdata WriteRelayValues;
+  50          extern struct Relay xdata ReadRelayValues;
+  51          extern struct time xdata stTime;
+  52          extern struct Record xdata stRecordInfo;
+  53          extern struct Record xdata stRecordReadInfo;
+  54          extern unsigned char xdata KeyBuffer[14];
+  55          extern  unsigned char xdata TestType;
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 2   
+
+  56          extern unsigned char idata KeyIndex;
+  57          //extern unsigned char BatType;
+  58          
+  59          extern unsigned char BatteryIndex;
+  60          extern unsigned char idata FreeRecords;
+  61          extern unsigned char xdata RecordsUsed;
+  62          extern unsigned char TransmitChksum;
+  63          extern unsigned int xdata ADCCh[ADC_MAX_BUFF_SIZE];
+  64          extern unsigned char xdata      LCD_CurrentX;
+  65          extern unsigned char xdata      LCD_CurrentY;
+  66          
+  67          extern unsigned char xdata ActiveBat1Info[12];
+  68          extern unsigned char xdata ActiveBat2Info[12];
+  69          
+  70          
+  71          
+  72          extern bit Remote;
+  73          extern bit ChksumErr;
+  74          //extern bit DecimalPoint;
+  75          extern bit completedPacket;
+  76          extern bit gbDebugPort;
+  77          // Contains Sections to Channels mapping
+  78          unsigned char SectionsMapping[4];
+  79          
+  80          //unsigned int Adcvoltage;
+  81          
+  82          extern void SetTime_Date(struct time stTime);
+  83          extern bit ChksumErr;
+  84          unsigned char CursorIndex=0;
+  85          
+  86          
+  87          
+  88          
+  89          void main(void)
+  90          {
+  91   1              unsigned char idata KeyPressed;
+  92   1              unsigned char i;
+  93   1              unsigned char testbuf[10];
+  94   1      
+  95   1              CygnalInit();
+  96   1              EA =1;                                  //Enable global Interrupt
+  97   1              SFRPAGE = CONFIG_PAGE;  
+  98   1              //EraseRecords(1,50);
+  99   1              IntializeVariables();
+ 100   1              sprintf(testbuf,"%c%c%c",LCDSOM,LCD_BACK_LIGHT_ON,0);
+ 101   1              LCDPutText(testbuf);
+ 102   1              LCDInstWrite(LCD_BLINKING_OFF);
+ 103   1              WelcomeScreen(); //sign on message
+ 104   1              if(gbDebugPort)
+ 105   1              {               
+ 106   2                      PutStringOnRS232("Welcome To Thermal Battery Test System00\r\n");
+ 107   2              }
+ 108   1              for(i=0;i<=15;i++)
+ 109   1              {
+ 110   2                      delay(0xffff);
+ 111   2                      delay(0xffff);
+ 112   2                      delay(0xffff);
+ 113   2                      delay(0xffff);
+ 114   2              }
+ 115   1              // Assign the ADC channels to sections
+ 116   1              // First section to Channel#1
+ 117   1              SectionsMapping[0] = 1;
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 3   
+
+ 118   1              // Second section to Channel#2
+ 119   1              SectionsMapping[1] = 2;
+ 120   1              // Third section to Channel#4
+ 121   1              SectionsMapping[2] = 4;
+ 122   1              // Igniter to Channel#3
+ 123   1              SectionsMapping[3] = 3;
+ 124   1              
+ 125   1              i=0;
+ 126   1              MainMenu();  //main menu
+ 127   1              SFRPAGE = CONFIG_PAGE;          /* Set SFR Page to 15 for initializing Parallel Ports */
+ 128   1              DATACLK =0;
+ 129   1      
+ 130   1      
+ 131   1      
+ 132   1              while(1)
+ 133   1              {
+ 134   2      
+ 135   2                      if(ChksumErr) //checksum error occurs
+ 136   2                      {
+ 137   3                              ChksumErr=0;
+ 138   3                              PutStringOnRS232(NACK);
+ 139   3                      }
+ 140   2                      if(MMI_screen !=TBT_MMI_DATE_TIME_SETTINGS && MMI_screen !=TBT_MMI_BATTERY_NUMERIC_KEY && MMI_screen !=T
+             -BT_MMI_NEW_RELAY_KEY1 && MMI_screen !=TBT_MMI_NEW_RELAY_KEY1_K2 && MMI_screen !=TBT_MMI_NEW_RELAY_KEY1_K3 && MMI_screen 
+             -!=TBT_MMI_NEW_RELAY_KEY1_PR && MMI_screen != TBT_MMI_IGNITE_KEY && MMI_screen != SETTINGS &&  MMI_screen != TBT_MMI_COND
+             -ITION_50_1 &&  MMI_screen != TBT_MMI_CONDITION_50_2 &&  MMI_screen != TBT_MMI_CONDITION_50_3 &&  MMI_screen != TBT_MMI_C
+             -ONDITION_50_4 && MMI_screen !=TBT_MMI_CONDITION_50_5 && MMI_screen !=TBT_MMI_SECTION_SETTINGS)
+ 141   2                              DisplayTime();
+ 142   2                      if(completedPacket)  //complete packet is received from serial port 
+ 143   2                      {
+ 144   3                              completedPacket =0;
+ 145   3                              DecodeCommands();   //decoding serial commands
+ 146   3                      }
+ 147   2                      KeyPressed = ScanKeyPad();  //scan keypad
+ 148   2                      switch(KeyPressed)
+ 149   2                      {
+ 150   3                              case FIRST_KEY :   //first key
+ 151   3                                      switch(MMI_screen)
+ 152   3                                      {
+ 153   4                                              case TBT_MMI_MAIN_MENU_KEYS:  //record information
+ 154   4                                            RecordsInformation();
+ 155   4                                              break;
+ 156   4                                              case TBT_MMI_TEST_SELECTION:  //display battery serial number
+ 157   4                                                       BatterySerailNumber();
+ 158   4                                                       LCDInstWrite(LCD_BLINKING_ON);
+ 159   4                                                       LCDGotoXY(10,3);
+ 160   4                                              break;
+ 161   4                                              case TBT_MMI_TEST_CONFIGURATION:        //test configuration
+ 162   4                                                      strcpy(stRecordInfo.Battery1Type,ActiveBat1Info);
+ 163   4                                                      for(BatteryIndex =1;BatteryIndex <=10;BatteryIndex++)
+ 164   4                                                      {
+ 165   5                                                              
+ 166   5                                                              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 167   5                                                              if((strncmp(ReadRelayValues.BatteryName,ActiveBat1Info,7)) == 0)
+ 168   5                                                                      break;
+ 169   5                                                      }
+ 170   4                                                      if(TestType !=RELAY_SETTINGS && TestType != SECTION_SETTINGS)
+ 171   4                                                              BatterySerailNumber();
+ 172   4                                                      else
+ 173   4                                                      if(TestType == RELAY_SETTINGS)
+ 174   4                                                      {
+ 175   5                                                              TestType  = 0xFF;       
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 4   
+
+ 176   5                                                              RelaySelections();
+ 177   5                                                      }
+ 178   4                                                      else
+ 179   4                                                      if(TestType == SECTION_SETTINGS)
+ 180   4                                                      {
+ 181   5                                                              TestType  = 0xFF;       
+ 182   5                                                              SectionSettings();
+ 183   5                                                      }
+ 184   4                                              
+ 185   4                                              break;
+ 186   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+ 187   4                                                      ReadInput('1',10);
+ 188   4                                              break;
+ 189   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+ 190   4                                                      if(TestType == TIME_SETTINGS)
+ 191   4                                                              ReadInput('1',9);
+ 192   4                                                      else
+ 193   4                                                              ReadInput('1',7);
+ 194   4                                                      
+ 195   4                                              break;
+ 196   4                                              case TBT_MMI_IGNITE_KEY:
+ 197   4                                                              ReadInput('1',3);
+ 198   4                                              break;
+ 199   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+ 200   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+ 201   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+ 202   4                                                      ReadInput('1',4);
+ 203   4                                              break;
+ 204   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:
+ 205   4                                                      if(TestType ==COUNT)
+ 206   4                                                              ReadInput('1',1);
+ 207   4                                                      else if(TestType == DURATION)
+ 208   4                                                              ReadInput('1',2);
+ 209   4                                                      else if(TestType == START_DURATION || TestType == INTERVAL)
+ 210   4                                                              ReadInput('1',4);
+ 211   4      
+ 212   4                                              break;
+ 213   4                                              case TBT_MMI_RELAY_SELECTION_KEYS:
+ 214   4                                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 215   4                                                      IntervalDuration();
+ 216   4                                              break;
+ 217   4                                              case SETTINGS:
+ 218   4                                                      DateAndTimeScreen();
+ 219   4                                              break;
+ 220   4                                              case TBT_MMI_CONDITION_MENU:
+ 221   4                                                      TestCondition_50p();
+ 222   4                                              break;
+ 223   4                                              case TBT_MMI_SECTION_SETTINGS:
+ 224   4                                                      if(KeyIndex >=0 && KeyIndex <2)
+ 225   4                                                      {
+ 226   5                                                              LCDPutChar('1');
+ 227   5                                                              KeyBuffer[KeyIndex++]= '1';
+ 228   5                                                      }
+ 229   4                                              break;
+ 230   4                                      }
+ 231   3                              break;
+ 232   3                              case SECOND_KEY :       //second key
+ 233   3                                      switch(MMI_screen)
+ 234   3                                      {
+ 235   4                                              case SETTINGS:
+ 236   4                                                      TestType = RELAY_SETTINGS;
+ 237   4                                                      TestConfigurations();
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 5   
+
+ 238   4                                              break;
+ 239   4                                              case TBT_MMI_MAIN_MENU_KEYS:
+ 240   4                                                      Settings();
+ 241   4                                              break;
+ 242   4                                              case TBT_MMI_TEST_CONFIGURATION:
+ 243   4                                                      strcpy(stRecordInfo.Battery1Type,ActiveBat2Info);
+ 244   4                                                      for(BatteryIndex =1;BatteryIndex <=10;BatteryIndex++)
+ 245   4                                                      {
+ 246   5                                                              
+ 247   5                                                              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 248   5                                                              if((strncmp(ReadRelayValues.BatteryName,ActiveBat2Info,7)) == 0)
+ 249   5                                                                      break;
+ 250   5                                                      }
+ 251   4                                              
+ 252   4                                                      if(TestType !=RELAY_SETTINGS && TestType != SECTION_SETTINGS)
+ 253   4                                                              BatterySerailNumber();
+ 254   4                                                      else
+ 255   4                                                      if(TestType == RELAY_SETTINGS)
+ 256   4                                                      {
+ 257   5                                                              TestType  = 0xFF;       
+ 258   5                                                              RelaySelections();
+ 259   5                                                      }
+ 260   4                                                      else
+ 261   4                                                      if(TestType == SECTION_SETTINGS)
+ 262   4                                                      {
+ 263   5                                                              TestType  = 0xFF;       
+ 264   5                                                              SectionSettings();
+ 265   5                                                      }
+ 266   4                                              break;
+ 267   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+ 268   4                                                      ReadInput('2',10);
+ 269   4                                              break;
+ 270   4                                              case TBT_MMI_IGNITE_KEY:
+ 271   4                                                              ReadInput('2',3);
+ 272   4                                              break;
+ 273   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+ 274   4                                                      if(TestType == TIME_SETTINGS)
+ 275   4                                                              ReadInput('2',9);
+ 276   4                                                      else
+ 277   4                                                              ReadInput('2',7);
+ 278   4                                              break;
+ 279   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:
+ 280   4                                                      if(TestType ==COUNT)
+ 281   4                                                              ReadInput('2',1);
+ 282   4                                                      else if(TestType == DURATION)
+ 283   4                                                              ReadInput('2',2);
+ 284   4                                                      else if(TestType == START_DURATION || TestType == INTERVAL)
+ 285   4                                                              ReadInput('2',4);
+ 286   4                                              break;
+ 287   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+ 288   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+ 289   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+ 290   4                                                      ReadInput('2',4);
+ 291   4                                              break;
+ 292   4                                              case TBT_MMI_RELAY_SELECTION_KEYS:
+ 293   4                                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 294   4                                                      NewRelayK1();
+ 295   4                                              break;
+ 296   4                                              case TBT_MMI_CONDITION_MENU:
+ 297   4                                                      TestCondition_50n();
+ 298   4                                              break; 
+ 299   4                                              case TBT_MMI_SECTION_SETTINGS:
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 6   
+
+ 300   4                                                      if(KeyIndex >=0 && KeyIndex <2)
+ 301   4                                                      {
+ 302   5                                                              LCDPutChar('2');
+ 303   5                                                              KeyBuffer[KeyIndex++]= '2';
+ 304   5                                                      }
+ 305   4                                              break;
+ 306   4                                      }
+ 307   3                          break;
+ 308   3                              case THIRD_KEY :    //third key
+ 309   3                                      switch(MMI_screen)
+ 310   3                                      {
+ 311   4                                              case TBT_MMI_MAIN_MENU_KEYS:
+ 312   4                                                      IntializeVariables();  // Added on 21st Jan 2007        
+ 313   4                                                      TestConfigurations();
+ 314   4                                              break;
+ 315   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+ 316   4                                                      ReadInput('3',10);
+ 317   4                                              break;
+ 318   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+ 319   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+ 320   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+ 321   4                                                      ReadInput('3',4);
+ 322   4                                              break;
+ 323   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:
+ 324   4                                                      if(TestType ==COUNT)
+ 325   4                                                              ReadInput('3',1);
+ 326   4                                                      else if(TestType == DURATION)
+ 327   4                                                              ReadInput('3',2);
+ 328   4                                                      else if(TestType == START_DURATION || TestType == INTERVAL)
+ 329   4                                                              ReadInput('3',4);
+ 330   4                                              break;
+ 331   4                                              case TBT_MMI_IGNITE_KEY:
+ 332   4                                                              ReadInput('3',3);
+ 333   4                                              break;
+ 334   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+ 335   4                                                      if(TestType == TIME_SETTINGS)
+ 336   4                                                              ReadInput('3',9);
+ 337   4                                                      else
+ 338   4                                                              ReadInput('3',7);
+ 339   4                                              break;
+ 340   4                                              case TBT_MMI_RELAY_SELECTION_KEYS:
+ 341   4                                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 342   4                                                      NewRelayK2();
+ 343   4                                              break;
+ 344   4                                              case TBT_MMI_CONDITION_MENU:
+ 345   4                                                      TestCondition_30n();
+ 346   4                                              break;
+ 347   4                                              case SETTINGS:
+ 348   4                                                      //SectionSettings();
+ 349   4                                                      TestType = SECTION_SETTINGS;
+ 350   4                                                      TestConfigurations();
+ 351   4      
+ 352   4                                              break;
+ 353   4                                              case TBT_MMI_SECTION_SETTINGS:
+ 354   4                                                      if(KeyIndex >=0 && KeyIndex <2)
+ 355   4                                                      {
+ 356   5                                                              LCDPutChar('3');
+ 357   5                                                              KeyBuffer[KeyIndex++]= '3';
+ 358   5                                                      }
+ 359   4                                              break;
+ 360   4                                      }
+ 361   3                              break;
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 7   
+
+ 362   3                              case FOURTH_KEY :       //fourth key
+ 363   3                                      switch(MMI_screen)
+ 364   3                                      {
+ 365   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+ 366   4                                                      ReadInput('4',10);
+ 367   4                                              break;
+ 368   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+ 369   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+ 370   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+ 371   4                                                      ReadInput('4',4);
+ 372   4                                              break;
+ 373   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:
+ 374   4                                                      if(TestType ==COUNT)
+ 375   4                                                              ReadInput('4',1);
+ 376   4                                                      else if(TestType == DURATION)
+ 377   4                                                              ReadInput('4',2);
+ 378   4                                                      else if(TestType == START_DURATION || TestType == INTERVAL)
+ 379   4                                                              ReadInput('4',4);
+ 380   4                                              break;
+ 381   4                                              case TBT_MMI_IGNITE_KEY:
+ 382   4                                                              ReadInput('4',3);
+ 383   4                                              break;
+ 384   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+ 385   4                                                      if(TestType == TIME_SETTINGS)
+ 386   4                                                              ReadInput('4',9);
+ 387   4                                                      else
+ 388   4                                                              ReadInput('4',7);
+ 389   4      
+ 390   4                                              break;
+ 391   4                                              case TBT_MMI_RELAY_SELECTION_KEYS:
+ 392   4                                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 393   4                                                      NewRelayK3();
+ 394   4                                              break;
+ 395   4      
+ 396   4                                              case TBT_MMI_CONDITION_MENU:
+ 397   4                                                      TestCondition_55p();
+ 398   4                                              break;
+ 399   4                                              
+ 400   4                                      }
+ 401   3                              break;
+ 402   3                              case FIFTH_KEY :   //fifth key
+ 403   3                                      switch(MMI_screen)
+ 404   3                                      {
+ 405   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+ 406   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+ 407   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+ 408   4                                                      ReadInput('5',4);
+ 409   4                                              break;
+ 410   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+ 411   4                                                      ReadInput('5',10);
+ 412   4                                              break;
+ 413   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:
+ 414   4                                                      if(TestType ==COUNT)
+ 415   4                                                              ReadInput('5',1);
+ 416   4                                                      else if(TestType == DURATION)
+ 417   4                                                              ReadInput('5',2);
+ 418   4                                                      else if(TestType == START_DURATION || TestType == INTERVAL)
+ 419   4                                                              ReadInput('5',4);
+ 420   4      
+ 421   4                                              break;
+ 422   4                                              case TBT_MMI_IGNITE_KEY:
+ 423   4                                                              ReadInput('5',3);
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 8   
+
+ 424   4                                              break;
+ 425   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+ 426   4                                                      if(TestType == TIME_SETTINGS)
+ 427   4                                                              ReadInput('5',9);
+ 428   4                                                      else
+ 429   4                                                              ReadInput('5',7);
+ 430   4                                              break;
+ 431   4              
+ 432   4                                              case TBT_MMI_CONDITION_MENU:
+ 433   4                                                      TestCondition_Room_Temp();
+ 434   4                                              break;
+ 435   4                                      }
+ 436   3                              break;
+ 437   3                              case SIXTH_KEY :        //sixth key
+ 438   3                                      switch(MMI_screen)
+ 439   3                                      {
+ 440   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+ 441   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+ 442   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+ 443   4                                                      ReadInput('6',4);
+ 444   4                                              break;
+ 445   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:
+ 446   4                                                      if(TestType ==COUNT)
+ 447   4                                                              ReadInput('6',1);
+ 448   4                                                      else if(TestType == DURATION)
+ 449   4                                                              ReadInput('6',2);
+ 450   4                                                      else if(TestType == START_DURATION || TestType == INTERVAL)
+ 451   4                                                              ReadInput('6',4);
+ 452   4                                              break;
+ 453   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+ 454   4                                                      ReadInput('6',10);
+ 455   4                                              break;
+ 456   4                                              case TBT_MMI_IGNITE_KEY:
+ 457   4                                                              ReadInput('6',3);
+ 458   4                                              break;
+ 459   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+ 460   4                                                      if(TestType == TIME_SETTINGS)
+ 461   4                                                              ReadInput('6',9);
+ 462   4                                                      else
+ 463   4                                                              ReadInput('6',7);
+ 464   4                                              break;
+ 465   4                                      }
+ 466   3                              break;
+ 467   3                              case SEVENTH_KEY :      //seventh key
+ 468   3                                      switch(MMI_screen)
+ 469   3                                      {
+ 470   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+ 471   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+ 472   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+ 473   4                                                      ReadInput('7',4);
+ 474   4                                              break;
+ 475   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:
+ 476   4                                                      if(TestType ==COUNT)
+ 477   4                                                              ReadInput('7',1);
+ 478   4                                                      else if(TestType == DURATION)
+ 479   4                                                              ReadInput('7',2);
+ 480   4                                                      else if(TestType == START_DURATION || TestType == INTERVAL)
+ 481   4                                                              ReadInput('7',4);
+ 482   4      
+ 483   4                                              break;
+ 484   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+ 485   4                                                      ReadInput('7',10);
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 9   
+
+ 486   4                                              break;
+ 487   4                                              case TBT_MMI_IGNITE_KEY:
+ 488   4                                                              ReadInput('7',3);
+ 489   4                                              break;
+ 490   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+ 491   4                                                      if(TestType == TIME_SETTINGS)
+ 492   4                                                              ReadInput('7',9);
+ 493   4                                                      else
+ 494   4                                                              ReadInput('7',7);
+ 495   4                                              break;
+ 496   4                                      }
+ 497   3                              break;
+ 498   3                              case EIGHTH_KEY :               //eighth key
+ 499   3                                      switch(MMI_screen)
+ 500   3                                      {
+ 501   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+ 502   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+ 503   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+ 504   4                                                      ReadInput('8',4);
+ 505   4                                              break;
+ 506   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:
+ 507   4                                                      if(TestType ==COUNT)
+ 508   4                                                              ReadInput('8',1);
+ 509   4                                                      else if(TestType == DURATION)
+ 510   4                                                              ReadInput('8',2);
+ 511   4                                                      else if(TestType == START_DURATION || TestType == INTERVAL)
+ 512   4                                                              ReadInput('8',4);
+ 513   4                                              break;
+ 514   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+ 515   4                                                      ReadInput('8',10);
+ 516   4                                              break;
+ 517   4                                              case TBT_MMI_IGNITE_KEY:
+ 518   4                                                              ReadInput('8',3);
+ 519   4                                              break;
+ 520   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+ 521   4                                                      if(TestType == TIME_SETTINGS)
+ 522   4                                                              ReadInput('8',9);
+ 523   4                                                      else
+ 524   4                                                              ReadInput('8',9);
+ 525   4                                              break;
+ 526   4                                      }
+ 527   3                              break;
+ 528   3                              case NINTH_KEY :        //ninth key
+ 529   3                                      switch(MMI_screen)
+ 530   3                                      {
+ 531   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+ 532   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+ 533   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+ 534   4                                                      ReadInput('9',4);
+ 535   4                                              break;
+ 536   4                                              //8 replaced with 9 for three read values
+ 537   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:
+ 538   4                                                      if(TestType ==COUNT)
+ 539   4                                                              ReadInput('9',1);
+ 540   4                                                      else if(TestType == DURATION)
+ 541   4                                                              ReadInput('9',2);
+ 542   4                                                      else if(TestType == START_DURATION || TestType == INTERVAL)
+ 543   4                                                              ReadInput('9',4);
+ 544   4      
+ 545   4                                              break;
+ 546   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+ 547   4                                                      ReadInput('9',10);
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 10  
+
+ 548   4                                              break;
+ 549   4                                              case TBT_MMI_IGNITE_KEY:
+ 550   4                                                              ReadInput('9',3);
+ 551   4                                              break;
+ 552   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+ 553   4                                                      if(TestType == TIME_SETTINGS)
+ 554   4                                                              ReadInput('9',9);
+ 555   4                                                      else
+ 556   4                                                              ReadInput('9',7);
+ 557   4                                              break;
+ 558   4                                      }
+ 559   3                              break;
+ 560   3                              case ZERO_KEY :         //zero key
+ 561   3                                      switch(MMI_screen)
+ 562   3                                      {
+ 563   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+ 564   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+ 565   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+ 566   4                                                      ReadInput('0',4);
+ 567   4                                              break;
+ 568   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:
+ 569   4                                                      if(TestType ==COUNT)
+ 570   4                                                              ReadInput('0',1);
+ 571   4                                                      else if(TestType == DURATION)
+ 572   4                                                              ReadInput('0',2);
+ 573   4                                                      else if(TestType == START_DURATION || TestType == INTERVAL)
+ 574   4                                                              ReadInput('0',4);
+ 575   4                                              break;
+ 576   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+ 577   4                                                      ReadInput('0',10);
+ 578   4                                              break;
+ 579   4                                              case TBT_MMI_IGNITE_KEY:
+ 580   4                                                              ReadInput('0',3);
+ 581   4                                              break;
+ 582   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+ 583   4                                                      if(TestType == TIME_SETTINGS)
+ 584   4                                                              ReadInput('0',9);
+ 585   4                                                      else
+ 586   4                                                              ReadInput('0',7);
+ 587   4      
+ 588   4                                              break;
+ 589   4                                              case TBT_MMI_SECTION_SETTINGS:
+ 590   4                                                      if(KeyIndex >=0 && KeyIndex <2)
+ 591   4                                                      {
+ 592   5                                                              LCDPutChar('0');
+ 593   5                                                              KeyBuffer[KeyIndex++]= '0';
+ 594   5                                                      }
+ 595   4                                              break;  
+ 596   4                                      }
+ 597   3                              break;
+ 598   3                              case LEFT_ARROW_KEY: //left_arrow (B)
+ 599   3                                      switch(MMI_screen)
+ 600   3                                      {
+ 601   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+ 602   4                                                      if(TestType == TIME_SETTINGS)
+ 603   4                                                      {
+ 604   5                                                              if(KeyIndex <=9 && KeyIndex >0)
+ 605   5                                                              {
+ 606   6                                                                      if(KeyIndex == 3 || KeyIndex == 6)
+ 607   6                                                                      {
+ 608   7                                                                              KeyIndex--;
+ 609   7                                                                              LCDInstWrite(LCD_CURSOR_LEFT);
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 11  
+
+ 610   7                                                                      }
+ 611   6                                                                      LCDInstWrite(LCD_BLINKING_ON);
+ 612   6                                                                      LCDInstWrite(LCD_CURSOR_LEFT);
+ 613   6                                                                      KeyIndex--;
+ 614   6                                                              }
+ 615   5                                                      }
+ 616   4                                                      else
+ 617   4                                                      {
+ 618   5                                                              if(KeyIndex <=7 && KeyIndex >0)
+ 619   5                                                              {
+ 620   6                                                                      if(KeyIndex == 3 || KeyIndex == 6)
+ 621   6                                                                      {
+ 622   7                                                                              KeyIndex--;
+ 623   7                                                                              LCDInstWrite(LCD_CURSOR_LEFT);
+ 624   7                                                                      }
+ 625   6                                                                      LCDInstWrite(LCD_BLINKING_ON);
+ 626   6                                                                      LCDInstWrite(LCD_CURSOR_LEFT);
+ 627   6                                                                      KeyIndex--;
+ 628   6                                                              }
+ 629   5      
+ 630   5                                                      }
+ 631   4                                              
+ 632   4                                              break;
+ 633   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+ 634   4                                                      if(KeyIndex <=11 && KeyIndex >0)
+ 635   4                                                      {
+ 636   5                                                              KeyIndex--;
+ 637   5                                                              LCDInstWrite(LCD_BLINKING_ON);
+ 638   5                                                              LCDInstWrite(LCD_CURSOR_LEFT);
+ 639   5                                                      }
+ 640   4                                              break;
+ 641   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:
+ 642   4                                                      if(TestType == DURATION)
+ 643   4                                                      {
+ 644   5                                                              if(KeyIndex > 0)                            //Modified from "== 2" to ">0"
+ 645   5                                                              {
+ 646   6                                                                      KeyIndex--;
+ 647   6                                                                      LCDInstWrite(LCD_CURSOR_LEFT);
+ 648   6                                                                      //LCDInstWrite(LCD_CURSOR_LEFT);        // Modified on 7-11-06
+ 649   6                                                                      //KeyIndex--;                           // Modified on 7-11-06
+ 650   6                                                              }
+ 651   5                                                      }
+ 652   4                                                      else if(TestType == START_DURATION || TestType == INTERVAL)
+ 653   4                                                      {
+ 654   5                                                              if(KeyIndex <=4 && KeyIndex >=1)
+ 655   5                                                              {
+ 656   6                                                                      if(KeyIndex == 4)
+ 657   6                                                                      {
+ 658   7                                                                              KeyIndex--;
+ 659   7                                                                              LCDInstWrite(LCD_CURSOR_LEFT);
+ 660   7                                                                      }
+ 661   6                                                                      LCDInstWrite(LCD_BLINKING_ON);
+ 662   6                                                                      LCDInstWrite(LCD_CURSOR_LEFT);
+ 663   6                                                                      KeyIndex--;     
+ 664   6                                                              }
+ 665   5                                                      }
+ 666   4                                                      else if(TestType == COUNT)
+ 667   4                                                      {
+ 668   5                                                              if(KeyIndex >0 && KeyIndex <2)
+ 669   5                                                              {
+ 670   6                                                                      KeyIndex--;
+ 671   6                                                                      LCDInstWrite(LCD_CURSOR_LEFT);
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 12  
+
+ 672   6                                                              }
+ 673   5                                                      }
+ 674   4                                              break;
+ 675   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+ 676   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+ 677   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+ 678   4                                                      if(KeyIndex <=4 && KeyIndex >=1)
+ 679   4                                                      {
+ 680   5                                                              if(KeyIndex == 4)
+ 681   5                                                              {
+ 682   6                                                                      KeyIndex--;
+ 683   6                                                                      LCDInstWrite(LCD_CURSOR_LEFT);
+ 684   6                                                              }
+ 685   5                                                              LCDInstWrite(LCD_BLINKING_ON);
+ 686   5                                                              LCDInstWrite(LCD_CURSOR_LEFT);
+ 687   5                                                              KeyIndex--;     
+ 688   5                              
+ 689   5                                                      }
+ 690   4                                              break;
+ 691   4                                              
+ 692   4                                              case TBT_MMI_IGNITE_KEY:
+ 693   4                                                      if(KeyIndex <=4 && KeyIndex >0)
+ 694   4                                                      {
+ 695   5                                                              KeyIndex--;     
+ 696   5                                                              if(KeyIndex == 3)
+ 697   5                                                                      LCDInstWrite(LCD_CURSOR_LEFT);
+ 698   5                                                              LCDInstWrite(LCD_BLINKING_ON);
+ 699   5                                                              LCDInstWrite(LCD_CURSOR_LEFT);
+ 700   5                              
+ 701   5                                                      }
+ 702   4                                              break;
+ 703   4                                              case TBT_MMI_CONDITION_50_1:
+ 704   4                                              case TBT_MMI_CONDITION_50_2:
+ 705   4                                              case TBT_MMI_CONDITION_50_3:
+ 706   4                                              case TBT_MMI_CONDITION_50_4:
+ 707   4      //                                      case TBT_MMI_CONDITION_50_5:
+ 708   4                                                      if(LCD_CurrentY == 2)
+ 709   4                                                              LCDGotoXY(1,3);
+ 710   4                                                      else if(LCD_CurrentY == 3)
+ 711   4                                                              LCDGotoXY(1,4);
+ 712   4                                                      else if(LCD_CurrentY == 4)
+ 713   4                                                              LCDGotoXY(1,1);
+ 714   4                                                      else if(LCD_CurrentY == 1)
+ 715   4                                                              LCDGotoXY(1,2);
+ 716   4                                              break;  
+ 717   4      
+ 718   4                                              case TBT_MMI_CONDITION_50_5:
+ 719   4                                                      if(LCD_CurrentY == 2)
+ 720   4                                                              LCDGotoXY(1,3);
+ 721   4                                                      else if(LCD_CurrentY == 3)
+ 722   4                                                              LCDGotoXY(1,4);
+ 723   4                                                      else if(LCD_CurrentY == 4)
+ 724   4                                                      {
+ 725   5                                                              if(!i)
+ 726   5                                                              {
+ 727   6                                                                      i =1;
+ 728   6                                                                      LCDGotoXY(1,1);
+ 729   6                                                              }
+ 730   5                                                              else
+ 731   5                                                              {
+ 732   6                                                                      i =0;
+ 733   6                                                                      LCDGotoXY(15,4);
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 13  
+
+ 734   6                                                              }
+ 735   5      
+ 736   5      //                                                      LCDGotoXY(1,1);
+ 737   5                                                      }
+ 738   4                                                      else if(LCD_CurrentY == 1)
+ 739   4                                                              LCDGotoXY(1,2);
+ 740   4                                              break;                          
+ 741   4                                              case TBT_MMI_SECTION_SETTINGS:                          
+ 742   4                                                      if(KeyIndex >0 && KeyIndex <=2)
+ 743   4                                                      {
+ 744   5                                                              KeyIndex--;
+ 745   5                                                              LCDInstWrite(LCD_CURSOR_LEFT);
+ 746   5                                                      }
+ 747   4                                              break;
+ 748   4      
+ 749   4                                      }
+ 750   3                              break;
+ 751   3                              case RIGHT_ARROW_KEY : //right _arrow (A on keypad)
+ 752   3                                      switch(MMI_screen)
+ 753   3                                      {
+ 754   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+ 755   4                                                      if(TestType == TIME_SETTINGS)
+ 756   4                                                      {
+ 757   5                                                              if(KeyIndex <9 && KeyIndex >=0)
+ 758   5                                                              {
+ 759   6                                                                      if(KeyIndex == 1 || KeyIndex == 4)
+ 760   6                                                                      {
+ 761   7                                                                              KeyIndex++;
+ 762   7                                                                              LCDInstWrite(LCD_CURSOR_RIGHT);
+ 763   7                                                                      }
+ 764   6                                                                      LCDInstWrite(LCD_BLINKING_ON);
+ 765   6                                                                      LCDInstWrite(LCD_CURSOR_RIGHT);
+ 766   6                                                                      KeyIndex++;
+ 767   6                                                              }
+ 768   5                                                      }
+ 769   4                                                      else
+ 770   4                                                      {
+ 771   5                                                              if(KeyIndex <7 && KeyIndex >=0)
+ 772   5                                                              {
+ 773   6                                                                      if(KeyIndex == 1 || KeyIndex == 4)
+ 774   6                                                                      {
+ 775   7                                                                              KeyIndex++;
+ 776   7                                                                              LCDInstWrite(LCD_CURSOR_RIGHT);
+ 777   7                                                                      }
+ 778   6                                                                      LCDInstWrite(LCD_BLINKING_ON);
+ 779   6                                                                      LCDInstWrite(LCD_CURSOR_RIGHT);
+ 780   6                                                                      KeyIndex++;
+ 781   6                                                              }
+ 782   5      
+ 783   5                                                      }
+ 784   4                                              break;
+ 785   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+ 786   4                                                      if(KeyIndex <10 && KeyIndex >=0)
+ 787   4                                                      {
+ 788   5                                                              KeyIndex++;
+ 789   5                                                              LCDInstWrite(LCD_BLINKING_ON);
+ 790   5                                                              LCDInstWrite(LCD_CURSOR_RIGHT);
+ 791   5                                                      }
+ 792   4                                              break;
+ 793   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:
+ 794   4                                                      if(TestType == DURATION)
+ 795   4                                                      {
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 14  
+
+ 796   5                                                                      if(KeyIndex < 2 )                      // Modified from "==0" to "<2"
+ 797   5                                                              {
+ 798   6                                                                      KeyIndex++;
+ 799   6                                                                      LCDInstWrite(LCD_CURSOR_RIGHT);
+ 800   6                                                                      //LCDInstWrite(LCD_CURSOR_RIGHT);  // Modified on 7-11-06
+ 801   6                                                                      //KeyIndex++;                      // Modified on 7-11-06
+ 802   6                                                              }
+ 803   5                                                      }
+ 804   4                                                      else if(TestType == START_DURATION || TestType == INTERVAL)
+ 805   4                                                      {
+ 806   5                                                              if(KeyIndex <3 && KeyIndex >=0)
+ 807   5                                                              {
+ 808   6                                                                      if(KeyIndex == 2)
+ 809   6                                                                      {
+ 810   7                                                                              KeyIndex++;
+ 811   7                                                                              LCDInstWrite(LCD_CURSOR_RIGHT);
+ 812   7                                                                      }
+ 813   6                                                                      LCDInstWrite(LCD_BLINKING_ON);
+ 814   6                                                                      LCDInstWrite(LCD_CURSOR_RIGHT);
+ 815   6                                                                      KeyIndex++;
+ 816   6                                                              }
+ 817   5                                                      }
+ 818   4                                                      else if(TestType == COUNT)
+ 819   4                                                      {
+ 820   5                                                              if(KeyIndex >=0 && KeyIndex <1)
+ 821   5                                                              {
+ 822   6                                                                      KeyIndex++;
+ 823   6                                                                      LCDInstWrite(LCD_CURSOR_RIGHT);
+ 824   6                                                              }
+ 825   5                                                      }
+ 826   4                                              
+ 827   4                                              break;
+ 828   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+ 829   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+ 830   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+ 831   4                                                      if(KeyIndex <3 && KeyIndex >=0)
+ 832   4                                                      {
+ 833   5                                                                      if(KeyIndex == 2)
+ 834   5                                                                      {
+ 835   6                                                                              KeyIndex++;
+ 836   6                                                                              LCDInstWrite(LCD_CURSOR_RIGHT);
+ 837   6                                                                      }
+ 838   5                                                                      LCDInstWrite(LCD_BLINKING_ON);
+ 839   5                                                                      LCDInstWrite(LCD_CURSOR_RIGHT);
+ 840   5                                                                      KeyIndex++;     
+ 841   5                                                      }
+ 842   4                                              break;
+ 843   4                                              case TBT_MMI_IGNITE_KEY:
+ 844   4                                                      if(KeyIndex <3)
+ 845   4                                                      {
+ 846   5                                                              KeyIndex++;     
+ 847   5                                                              LCDInstWrite(LCD_BLINKING_ON);
+ 848   5                                                              LCDInstWrite(LCD_CURSOR_RIGHT);
+ 849   5                                                      }
+ 850   4                                              break;
+ 851   4                                              case TBT_MMI_CONDITION_50_1:
+ 852   4                                              case TBT_MMI_CONDITION_50_2:
+ 853   4                                              case TBT_MMI_CONDITION_50_3:
+ 854   4                                              case TBT_MMI_CONDITION_50_4:
+ 855   4      
+ 856   4                                                      if(LCD_CurrentY == 2)
+ 857   4                                                              LCDGotoXY(1,1);
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 15  
+
+ 858   4                                                      else if(LCD_CurrentY == 3)
+ 859   4                                                              LCDGotoXY(1,2);
+ 860   4                                                      else if(LCD_CurrentY == 4)
+ 861   4                                                              LCDGotoXY(1,3);
+ 862   4                                                      else if(LCD_CurrentY == 1)
+ 863   4                                                              LCDGotoXY(1,4);
+ 864   4                                              break;  
+ 865   4                                              case TBT_MMI_CONDITION_50_5:
+ 866   4                                                      if(LCD_CurrentY == 2)
+ 867   4                                                              LCDGotoXY(1,1);
+ 868   4                                                      else if(LCD_CurrentY == 3)
+ 869   4                                                              LCDGotoXY(1,2);
+ 870   4                                                      else if(LCD_CurrentY == 4)
+ 871   4                                                      {
+ 872   5                                                              if(!i)
+ 873   5                                                              {
+ 874   6                                                                      i =1;
+ 875   6                                                                      LCDGotoXY(1,3);
+ 876   6                                                              }
+ 877   5                                                              else
+ 878   5                                                              {
+ 879   6                                                                      i =0;
+ 880   6                                                                      LCDGotoXY(15,4);
+ 881   6                                                              }
+ 882   5                                                      }
+ 883   4                                                      else if(LCD_CurrentY == 1)
+ 884   4                                                              LCDGotoXY(1,4);
+ 885   4                                              break;
+ 886   4                                              case TBT_MMI_SECTION_SETTINGS:                          
+ 887   4                                                      if(KeyIndex >=0 && KeyIndex <2)
+ 888   4                                                      {
+ 889   5                                                              KeyIndex++;
+ 890   5                                                              LCDInstWrite(LCD_CURSOR_RIGHT);
+ 891   5                                                      }
+ 892   4                                              break;
+ 893   4      
+ 894   4                                      }
+ 895   3                              break;
+ 896   3                              case ENTER_KEY :  //enter key(* on keypad)
+ 897   3                                      switch(MMI_screen)
+ 898   3                                      {
+ 899   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+ 900   4                                                      KeyIndex =0;
+ 901   4                                                      if(TestType == TIME_SETTINGS)
+ 902   4                                                      {
+ 903   5                                                              stTime.Date  = ((KeyBuffer[0] -'0')<<4)| (KeyBuffer[1] -'0');
+ 904   5                                                              stTime.Month = ((KeyBuffer[3] -'0')<<4)| (KeyBuffer[4] -'0');
+ 905   5                                                              stTime.Year  = ((KeyBuffer[6] -'0')<<12)|((KeyBuffer[7] -'0')<<8) | ((KeyBuffer[8]-'0')<<4) | (KeyB
+             -uffer[9]-'0');
+ 906   5                                                              if(stTime.Date >=1 && stTime.Date <= 0x31)
+ 907   5                                                              {
+ 908   6                                                                      if(stTime.Month >=1 && stTime.Month <=0x12)
+ 909   6                                                                      {
+ 910   7                                                                              if(stTime.Year >=0x2006)
+ 911   7                                                                              {
+ 912   8                                                                                      TestType = DATE_SETTINGS;
+ 913   8                                                                                      LCDGotoXY(6,4);
+ 914   8                                                                                      sprintf(KeyBuffer,"%02x:%02x:%02x",(unsigned int)stTime.Hours&0x3f,(unsigned int)stTime.Minutes,
+             -(unsigned int)stTime.Seconds); 
+ 915   8                                                                              }
+ 916   7                                                                              else
+ 917   7                                                                              {
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 16  
+
+ 918   8                                                                                      TestType = TIME_SETTINGS;
+ 919   8                                                                                      LCDGotoXY(6,3);
+ 920   8                                                                              }
+ 921   7                                                                      }
+ 922   6                                                                      else
+ 923   6                                                                      {
+ 924   7                                                                              TestType = TIME_SETTINGS;
+ 925   7                                                                              LCDGotoXY(6,3);
+ 926   7                                                                      }
+ 927   6                                                              }
+ 928   5                                                              else
+ 929   5                                                              {
+ 930   6                                                                      TestType = TIME_SETTINGS;
+ 931   6                                                                      LCDGotoXY(6,3);
+ 932   6                                                              }
+ 933   5                                                                      
+ 934   5                                                      }
+ 935   4                                                      else if(TestType == DATE_SETTINGS)
+ 936   4                                                      {
+ 937   5                                                              stTime.Hours  = ((KeyBuffer[0] -'0')<<4)| (KeyBuffer[1] -'0');
+ 938   5                                                              stTime.Minutes= ((KeyBuffer[3] -'0')<<4)| (KeyBuffer[4] -'0');
+ 939   5                                                              stTime.Seconds= (((KeyBuffer[6]-'0')<<4) | (KeyBuffer[7]-'0'));
+ 940   5                                                              if(stTime.Hours >=0 && stTime.Hours <=0x24)
+ 941   5                                                              {
+ 942   6                                                                      if(stTime.Minutes >=0 && stTime.Minutes <=0x59)
+ 943   6                                                                      {
+ 944   7                                                                              if(stTime.Seconds >=0 && stTime.Seconds <=0x59)
+ 945   7                                                                              {
+ 946   8                                                                                      SetTime_Date(stTime);
+ 947   8                                                                                      LCDInstWrite(LCD_BLINKING_OFF);
+ 948   8                                                                                      MainMenu();
+ 949   8                                                                              }
+ 950   7                                                                      }
+ 951   6                                                              }
+ 952   5                                                              else
+ 953   5                                                              {
+ 954   6                                                                      TestType = DATE_SETTINGS;
+ 955   6                                                                      LCDGotoXY(6,4);
+ 956   6                                                              }
+ 957   5                                                      }
+ 958   4                                              break;
+ 959   4                                              case TBT_MMI_RECORD_INFO:  
+ 960   4                                              case TBT_MMI_TEST_COMPLETED:
+ 961   4                                              case TBT_MMI_TEST_STATUS:
+ 962   4                                                      MainMenu();
+ 963   4                                              break;
+ 964   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+ 965   4      //                                              if(!KeyIndex == 0)
+ 966   4      //                                                      strcpy(stRecordInfo.SerialNumber,"00000000000");
+ 967   4      //                                              else
+ 968   4                                                              KeyBuffer[11]= '\0';
+ 969   4                                                              strcpy(stRecordInfo.SerialNumber,KeyBuffer);
+ 970   4                                                              KeyIndex =0;
+ 971   4                                                              LCDInstWrite(LCD_BLINKING_OFF);
+ 972   4      //MODIFIED ON 07 AUGUST 2006 BY NAGARJUNA
+ 973   4                                                              TestConditoion_Menu();
+ 974   4                                              break;
+ 975   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+ 976   4                                                      if(TestType ==K1_RELAY)
+ 977   4                                                      {
+ 978   5                                                              if(!KeyIndex)
+ 979   5                                                              {
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 17  
+
+ 980   6                                                                      WriteRelayValues.K1StartTime = ReadRelayValues.K1StartTime;
+ 981   6                                                                      LCDGotoXY(15,4);
+ 982   6                                                                      sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K1StopTime/1000.0));
+ 983   6                                                                      TestType =K1_RELAY_STOP;
+ 984   6      //                                                              TestType = 0xFF;
+ 985   6                                                              }
+ 986   5                                                              else
+ 987   5                                                              {
+ 988   6                                                                      WriteRelayValues.K1StartTime = atof(KeyBuffer)*1000;
+ 989   6                                                                      if(WriteRelayValues.K1StartTime >=MIN_K1_START_TIME && WriteRelayValues.K1StartTime <=MAX_K1_START
+             -_TIME)
+ 990   6                                                                      {
+ 991   7                                                                              LCDGotoXY(15,4);
+ 992   7                                                                              sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K1StopTime/1000.0));
+ 993   7                                                                              TestType =K1_RELAY_STOP;
+ 994   7              //                                                              TestType = 0xFF;
+ 995   7                                                                      }
+ 996   6                                                                      else
+ 997   6                                                                      {
+ 998   7                                                                              if(gbDebugPort)
+ 999   7                                                                                      Put_String_UART1("\r\n INVALID K1 RELAY START TIME\r\n");
+1000   7                                                                              LCDGotoXY(15,3);
+1001   7                                                                              KeyIndex =0;
+1002   7                                                                      }
+1003   6                                                              }
+1004   5                                                      }
+1005   4                                                      else
+1006   4                                                      {
+1007   5                                                              if(!KeyIndex)
+1008   5                                                              {
+1009   6                                                                      FLASH_Read  (RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+1010   6                                                                      WriteRelayValues.FirstSection = ReadRelayValues.FirstSection;
+1011   6                                                                      WriteRelayValues.SecondSection = ReadRelayValues.SecondSection;
+1012   6                                                                      WriteRelayValues.K1StopTime = ReadRelayValues.K1StopTime;
+1013   6                                                                      WriteRelayValues.K2StartTime = ReadRelayValues.K2StartTime;
+1014   6                                                                      WriteRelayValues.K2StopTime = ReadRelayValues.K2StopTime;
+1015   6                                                                      WriteRelayValues.K3StartTime = ReadRelayValues.K3StartTime;
+1016   6                                                                      WriteRelayValues.K3StopTime = ReadRelayValues.K3StopTime;
+1017   6                                                                      WriteRelayValues.PRStart = ReadRelayValues.PRStart;
+1018   6                                                                      WriteRelayValues.PRDuration = ReadRelayValues.PRDuration;
+1019   6                                                                      WriteRelayValues.PRCount = ReadRelayValues.PRCount;
+1020   6                                                                      WriteRelayValues.Interval = ReadRelayValues.Interval;
+1021   6                                                                      WriteRelayValues.IgnitionDuration = ReadRelayValues.IgnitionDuration;
+1022   6                                                                      WriteRelayValues.Testduration = ReadRelayValues.Testduration;
+1023   6                                                                      //added
+1024   6                                                                      strcpy(WriteRelayValues.BatteryName,ReadRelayValues.BatteryName);
+1025   6                                                              
+1026   6                                                                      FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+1027   6                                                                      FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay));
+1028   6                                                                      
+1029   6                                                                      LCDInstWrite(LCD_BLINKING_OFF);
+1030   6                                                                      LCDWriteLine(2,"                    ",2);
+1031   6                                                                      TestType = 0xFF;
+1032   6                                                                      RelaySelections();
+1033   6                                                              }
+1034   5                                                              else
+1035   5                                                              {
+1036   6                                                                      WriteRelayValues.K1StopTime = atof(KeyBuffer)*1000;
+1037   6                                                                      if(WriteRelayValues.K1StopTime >=MIN_K1_STOP_TIME && WriteRelayValues.K1StopTime <=MAX_K1_STOP_TIM
+             -E)
+1038   6                                                                      {
+1039   7                                                                              LCDInstWrite(LCD_BLINKING_OFF);
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 18  
+
+1040   7                                                                              FLASH_Read  (RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+1041   7                                                                              WriteRelayValues.FirstSection = ReadRelayValues.FirstSection;
+1042   7                                                                              WriteRelayValues.SecondSection = ReadRelayValues.SecondSection;
+1043   7      
+1044   7                                                                              WriteRelayValues.K2StartTime = ReadRelayValues.K2StartTime;
+1045   7                                                                              WriteRelayValues.K2StopTime = ReadRelayValues.K2StopTime;
+1046   7                                                                              WriteRelayValues.K3StartTime = ReadRelayValues.K3StartTime;
+1047   7                                                                              WriteRelayValues.K3StopTime = ReadRelayValues.K3StopTime;
+1048   7                                                                              WriteRelayValues.PRStart = ReadRelayValues.PRStart;
+1049   7                                                                              WriteRelayValues.PRDuration = ReadRelayValues.PRDuration;
+1050   7                                                                              WriteRelayValues.PRCount = ReadRelayValues.PRCount;
+1051   7                                                                              WriteRelayValues.Interval = ReadRelayValues.Interval;
+1052   7                                                                              WriteRelayValues.IgnitionDuration = ReadRelayValues.IgnitionDuration;
+1053   7                                                                              WriteRelayValues.Testduration = ReadRelayValues.Testduration;
+1054   7      
+1055   7                                                                              strcpy(WriteRelayValues.BatteryName,ReadRelayValues.BatteryName);
+1056   7                                                                              FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+1057   7                                                                              FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay));
+1058   7                                                                              LCDInstWrite(LCD_BLINKING_OFF);
+1059   7                                                                              LCDWriteLine(2,"                    ",2);
+1060   7                                                                              RelaySelections();
+1061   7                                                                      }
+1062   6                                                                      else
+1063   6                                                                      {
+1064   7                                                                              if(gbDebugPort)
+1065   7                                                                                      Put_String_UART1("\r\n INVALID K1 RELAY STOP TIME\r\n");
+1066   7                                                                              LCDGotoXY(15,4);
+1067   7                                                                              KeyIndex =0;
+1068   7                                                                      }
+1069   6                                                              }
+1070   5                                                      }
+1071   4                                                      KeyIndex =0;
+1072   4      //                                              DecimalPoint =0;
+1073   4                                              break;                  
+1074   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+1075   4                                              //      KeyBuffer[KeyIndex] ='\0';
+1076   4                                                      if(TestType ==K2_RELAY)
+1077   4                                                      {
+1078   5                                                              if(!KeyIndex)
+1079   5                                                              {
+1080   6                                                                      WriteRelayValues.K2StartTime = ReadRelayValues.K2StartTime;
+1081   6                                                                      LCDGotoXY(15,4);
+1082   6                                                                      sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K2StopTime/1000.0));
+1083   6                                                                      TestType = K2_RELAY_STOP; //0xFF;
+1084   6                                                              }
+1085   5                                                              else
+1086   5                                                              {
+1087   6                                                                      WriteRelayValues.K2StartTime = atof(KeyBuffer)*1000;
+1088   6                                                                      if(WriteRelayValues.K2StartTime >=MIN_K2_START_TIME && WriteRelayValues.K2StartTime <=MAX_K2_START
+             -_TIME)
+1089   6                                                                      {
+1090   7                                                                              LCDGotoXY(15,4);
+1091   7                                                                              sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K2StopTime/1000.0));
+1092   7                                                                              TestType = K2_RELAY_STOP;
+1093   7                                                                              //TestType = 0xFF;
+1094   7                                                                      }
+1095   6                                                                      else
+1096   6                                                                      {
+1097   7                                                                              if(gbDebugPort)
+1098   7                                                                                      Put_String_UART1("\r\n INVALID K2 RELAY START TIME\r\n");
+1099   7                                                                              WriteRelayValues.K2StartTime =0;
+1100   7                                                                              LCDGotoXY(15,3);
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 19  
+
+1101   7                                                                              KeyIndex =0;
+1102   7                                                                      }
+1103   6                                                              }
+1104   5                                                      }
+1105   4                                                      else
+1106   4                                                      {
+1107   5                                                              if(!KeyIndex)
+1108   5                                                              {
+1109   6                                                                      WriteRelayValues.K2StopTime = ReadRelayValues.K2StopTime;
+1110   6                                                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+1111   6                                                                      WriteRelayValues.FirstSection = ReadRelayValues.FirstSection;
+1112   6                                                                      WriteRelayValues.SecondSection = ReadRelayValues.SecondSection;
+1113   6      
+1114   6                                                                      WriteRelayValues.K1StartTime = ReadRelayValues.K1StartTime;
+1115   6                                                                      WriteRelayValues.K1StopTime = ReadRelayValues.K1StopTime;
+1116   6                                                                      WriteRelayValues.K3StartTime = ReadRelayValues.K3StartTime;
+1117   6                                                                      WriteRelayValues.K3StopTime = ReadRelayValues.K3StopTime;
+1118   6                                                                      WriteRelayValues.PRStart = ReadRelayValues.PRStart;
+1119   6                                                                      WriteRelayValues.PRDuration = ReadRelayValues.PRDuration;
+1120   6                                                                      WriteRelayValues.PRCount = ReadRelayValues.PRCount;
+1121   6                                                                      WriteRelayValues.Interval = ReadRelayValues.Interval;
+1122   6      
+1123   6                                                                      strcpy(WriteRelayValues.BatteryName,ReadRelayValues.BatteryName);
+1124   6                                                                      WriteRelayValues.IgnitionDuration = ReadRelayValues.IgnitionDuration;
+1125   6                                                                      WriteRelayValues.Testduration = ReadRelayValues.Testduration;
+1126   6                                                                      FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+1127   6                                                                      FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay));
+1128   6                                                                      
+1129   6                                                                      LCDInstWrite(LCD_BLINKING_OFF);
+1130   6                                                                      LCDWriteLine(2,"                    ",2);
+1131   6                                                                      TestType = 0xff; //K2_RELAY_STOP;
+1132   6                                                                      RelaySelections();
+1133   6                                                              }
+1134   5                                                              else
+1135   5                                                              {
+1136   6                                                                      WriteRelayValues.K2StopTime = atof(KeyBuffer)*1000;
+1137   6                                                                      if(WriteRelayValues.K2StopTime >=MIN_K2_STOP_TIME && WriteRelayValues.K2StopTime <=MAX_K2_STOP_TIM
+             -E)
+1138   6                                                                      {
+1139   7                                                                              TestType = K2_RELAY;
+1140   7                                                                              LCDInstWrite(LCD_BLINKING_OFF);
+1141   7                                                                              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+1142   7                                                                              WriteRelayValues.FirstSection = ReadRelayValues.FirstSection;
+1143   7                                                                              WriteRelayValues.SecondSection = ReadRelayValues.SecondSection;
+1144   7      
+1145   7                                                                              WriteRelayValues.K1StartTime = ReadRelayValues.K1StartTime;
+1146   7                                                                              WriteRelayValues.K1StopTime = ReadRelayValues.K1StopTime;
+1147   7                                                                              WriteRelayValues.K3StartTime = ReadRelayValues.K3StartTime;
+1148   7                                                                              WriteRelayValues.K3StopTime = ReadRelayValues.K3StopTime;
+1149   7                                                                              WriteRelayValues.PRStart = ReadRelayValues.PRStart;
+1150   7                                                                              WriteRelayValues.PRDuration = ReadRelayValues.PRDuration;
+1151   7                                                                              WriteRelayValues.PRCount = ReadRelayValues.PRCount;
+1152   7                                                                              WriteRelayValues.Interval = ReadRelayValues.Interval;
+1153   7                                                                              WriteRelayValues.IgnitionDuration = ReadRelayValues.IgnitionDuration;
+1154   7                                                                              WriteRelayValues.Testduration = ReadRelayValues.Testduration;
+1155   7                                                                              strcpy(WriteRelayValues.BatteryName,ReadRelayValues.BatteryName);
+1156   7              
+1157   7                                                                              FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+1158   7                                                                              FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay));
+1159   7                                                                              LCDInstWrite(LCD_BLINKING_OFF);
+1160   7                                                                              LCDWriteLine(2,"                    ",2);
+1161   7                                                                              RelaySelections();
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 20  
+
+1162   7                                                                      }
+1163   6                                                                      else
+1164   6                                                                      {
+1165   7                                                                              if(gbDebugPort)
+1166   7                                                                                      Put_String_UART1("\r\n INVALID K2 RELAY STOP TIME\r\n");
+1167   7                                                                              LCDGotoXY(15,4);
+1168   7                                                                              KeyIndex =0;
+1169   7                                                                      }
+1170   6                                                              }
+1171   5                                                      }
+1172   4                                                      KeyIndex =0;
+1173   4      //                                              DecimalPoint =0;
+1174   4                                              break;
+1175   4                                              case TBT_MMI_CONDITION_50_1:
+1176   4                                                      if(LCD_CurrentY == 1)
+1177   4                                                              stRecordInfo.TestCondition =4;
+1178   4                                                      else if(LCD_CurrentY == 2)
+1179   4                                                              stRecordInfo.TestCondition =5;
+1180   4                                                      else if(LCD_CurrentY == 3)
+1181   4                                                              stRecordInfo.TestCondition =6;
+1182   4                                                      else if(LCD_CurrentY == 4)
+1183   4                                                              stRecordInfo.TestCondition =7;
+1184   4                                                      else
+1185   4                                                      {
+1186   5                                                              //Invalid Entry
+1187   5                                                      }
+1188   4                                                      ConnectBatteryTerminals();
+1189   4                                              break;
+1190   4      
+1191   4                                              case TBT_MMI_CONDITION_50_2:
+1192   4                                                      if(LCD_CurrentY == 1)
+1193   4                                                              stRecordInfo.TestCondition =1;
+1194   4                                                      else if(LCD_CurrentY == 2)
+1195   4                                                              stRecordInfo.TestCondition =2;
+1196   4                                                      else if(LCD_CurrentY == 3)
+1197   4                                                              stRecordInfo.TestCondition =3;
+1198   4                                                      else
+1199   4                                                      {
+1200   5                                                              //Invalid Entry
+1201   5                                                      }
+1202   4                                                      ConnectBatteryTerminals();
+1203   4                                              break;                                  
+1204   4      
+1205   4                                              case TBT_MMI_CONDITION_50_3:
+1206   4                                                      if(LCD_CurrentY == 1)
+1207   4                                                              stRecordInfo.TestCondition =13;
+1208   4                                                      else if(LCD_CurrentY == 2)
+1209   4                                                              stRecordInfo.TestCondition =14;
+1210   4                                                      else if(LCD_CurrentY == 3)
+1211   4                                                              stRecordInfo.TestCondition =15;
+1212   4                                                      else if(LCD_CurrentY == 4)
+1213   4                                                              stRecordInfo.TestCondition =16;
+1214   4                                                      else
+1215   4                                                      {
+1216   5                                                              //Invalid Entry
+1217   5                                                      }
+1218   4                                                      ConnectBatteryTerminals();
+1219   4                                              break;                                  
+1220   4      
+1221   4                                              case TBT_MMI_CONDITION_50_4:
+1222   4                                                      if(LCD_CurrentY == 1)
+1223   4                                                              stRecordInfo.TestCondition =17;
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 21  
+
+1224   4                                                      else if(LCD_CurrentY == 2)
+1225   4                                                              stRecordInfo.TestCondition =18;
+1226   4                                                      else if(LCD_CurrentY == 3)
+1227   4                                                              stRecordInfo.TestCondition =19;
+1228   4                                                      else if(LCD_CurrentY == 4)
+1229   4                                                              stRecordInfo.TestCondition =20;
+1230   4                                                      else
+1231   4                                                      {
+1232   5                                                              //Invalid Entry
+1233   5                                                      }
+1234   4                                                      ConnectBatteryTerminals();
+1235   4                                              break;                                  
+1236   4      
+1237   4                                              case TBT_MMI_CONDITION_50_5:
+1238   4                                                      if(LCD_CurrentY == 1)
+1239   4                                                              stRecordInfo.TestCondition =8;
+1240   4                                                      else if(LCD_CurrentY == 2)
+1241   4                                                              stRecordInfo.TestCondition =9;
+1242   4                                                      else if(LCD_CurrentY == 3)
+1243   4                                                              stRecordInfo.TestCondition =10;
+1244   4                                                      else if(LCD_CurrentY == 4 && LCD_CurrentX == 1)
+1245   4                                                              stRecordInfo.TestCondition =11;
+1246   4                                                      else if(LCD_CurrentY == 4 && LCD_CurrentX == 15)
+1247   4                                                              stRecordInfo.TestCondition =12;
+1248   4      
+1249   4                                                      else
+1250   4                                                      {
+1251   5                                                              //Invalid Entry
+1252   5                                                      }
+1253   4                                                      ConnectBatteryTerminals();
+1254   4                                              break;                                  
+1255   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+1256   4                                              //      KeyBuffer[KeyIndex] ='\0';
+1257   4                                                      if(TestType ==K3_RELAY)
+1258   4                                                      {
+1259   5                                                              if(!KeyIndex)
+1260   5                                                              {
+1261   6                                                                      WriteRelayValues.K3StartTime = ReadRelayValues.K3StartTime;
+1262   6                                                                      LCDGotoXY(15,4);
+1263   6                                                                      sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K3StopTime/1000.0));
+1264   6      //                                                              TestType = 0xFF;
+1265   6                                                                      TestType = K3_RELAY_STOP;
+1266   6      
+1267   6                                                              }
+1268   5                                                              else
+1269   5                                                              {
+1270   6                                                                      WriteRelayValues.K3StartTime = atof(KeyBuffer)*1000;
+1271   6                                                                      if(WriteRelayValues.K3StartTime >=MIN_K3_START_TIME && WriteRelayValues.K3StartTime <=MAX_K3_START
+             -_TIME)
+1272   6                                                                      {
+1273   7                                                                              LCDGotoXY(15,4);
+1274   7                                                                              sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K3StopTime/1000.0));
+1275   7                                                                              TestType = K3_RELAY_STOP;
+1276   7              //                                                              TestType = 0xFF;
+1277   7                                                                      }
+1278   6                                                                      else
+1279   6                                                                      {
+1280   7                                                                              if(gbDebugPort)
+1281   7                                                                                      Put_String_UART1("\r\n INVALID K3 RELAY START TIME\r\n");
+1282   7                                                                              WriteRelayValues.K3StartTime =0;
+1283   7                                                                              LCDGotoXY(15,3);
+1284   7                                                                              KeyIndex =0;
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 22  
+
+1285   7                                                                      }
+1286   6                                                              }
+1287   5                                                      }
+1288   4                                                      else
+1289   4                                                      {
+1290   5                                                              if(!KeyIndex)
+1291   5                                                              {
+1292   6                                                                      WriteRelayValues.K3StopTime = ReadRelayValues.K3StopTime;
+1293   6                                                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+1294   6                                                                      WriteRelayValues.FirstSection = ReadRelayValues.FirstSection;
+1295   6                                                                      WriteRelayValues.SecondSection = ReadRelayValues.SecondSection;
+1296   6      
+1297   6                                                                      WriteRelayValues.K2StartTime = ReadRelayValues.K2StartTime;
+1298   6                                                                      WriteRelayValues.K2StopTime = ReadRelayValues.K2StopTime;
+1299   6                                                                      WriteRelayValues.K1StartTime = ReadRelayValues.K1StartTime;
+1300   6                                                                      WriteRelayValues.K1StopTime = ReadRelayValues.K1StopTime;
+1301   6                                                                      WriteRelayValues.PRStart = ReadRelayValues.PRStart;
+1302   6                                                                      WriteRelayValues.PRDuration = ReadRelayValues.PRDuration;
+1303   6                                                                      WriteRelayValues.PRCount = ReadRelayValues.PRCount;
+1304   6                                                                      WriteRelayValues.Interval = ReadRelayValues.Interval;
+1305   6                                                                      WriteRelayValues.IgnitionDuration = ReadRelayValues.IgnitionDuration;
+1306   6                                                                      WriteRelayValues.Testduration = ReadRelayValues.Testduration;
+1307   6      
+1308   6                                                                      strcpy(WriteRelayValues.BatteryName,ReadRelayValues.BatteryName);
+1309   6                                                              //      memcpy(&WriteRelayValues,&ReadRelayValues,sizeof(struct Relay));
+1310   6                                                                      FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+1311   6                                                                      FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay));
+1312   6                                                                      
+1313   6                                                                      LCDInstWrite(LCD_BLINKING_OFF);
+1314   6                                                                      LCDWriteLine(2,"                    ",2);
+1315   6      
+1316   6                                                                      TestType = 0xFF;
+1317   6                                                                      RelaySelections();
+1318   6                                                              }
+1319   5                                                              else
+1320   5                                                              {
+1321   6                                                                      WriteRelayValues.K3StopTime = atof(KeyBuffer)*1000;
+1322   6                                                                      if(WriteRelayValues.K3StopTime >=MIN_K3_STOP_TIME && WriteRelayValues.K2StartTime <=MAX_K2_STOP_TI
+             -ME)
+1323   6                                                                      {
+1324   7                                                                              TestType = K3_RELAY;
+1325   7                                                                              LCDInstWrite(LCD_BLINKING_OFF);
+1326   7                                                                              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+1327   7                                                                              WriteRelayValues.FirstSection = ReadRelayValues.FirstSection;
+1328   7                                                                              WriteRelayValues.SecondSection = ReadRelayValues.SecondSection;
+1329   7      
+1330   7                                                                              WriteRelayValues.K2StartTime = ReadRelayValues.K2StartTime;
+1331   7                                                                              WriteRelayValues.K2StopTime = ReadRelayValues.K2StopTime;
+1332   7                                                                              WriteRelayValues.K1StartTime = ReadRelayValues.K1StartTime;
+1333   7                                                                              WriteRelayValues.K1StopTime = ReadRelayValues.K1StopTime;
+1334   7                                                                              WriteRelayValues.PRStart = ReadRelayValues.PRStart;
+1335   7                                                                              WriteRelayValues.PRDuration = ReadRelayValues.PRDuration;
+1336   7                                                                              WriteRelayValues.PRCount = ReadRelayValues.PRCount;
+1337   7                                                                              WriteRelayValues.Interval = ReadRelayValues.Interval;
+1338   7                                                                              WriteRelayValues.IgnitionDuration = ReadRelayValues.IgnitionDuration;
+1339   7                                                                              WriteRelayValues.Testduration = ReadRelayValues.Testduration;
+1340   7              
+1341   7                                                                              strcpy(WriteRelayValues.BatteryName,ReadRelayValues.BatteryName);
+1342   7                              
+1343   7                                                                              FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+1344   7                                                                              FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay));
+1345   7                                                                              LCDInstWrite(LCD_BLINKING_OFF);
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 23  
+
+1346   7                                                                              LCDWriteLine(2,"                    ",2);
+1347   7                                                                              RelaySelections();
+1348   7                                                                      }
+1349   6                                                                      else
+1350   6                                                                      {
+1351   7                                                                              if(gbDebugPort)
+1352   7                                                                                      Put_String_UART1("\r\n INVALID K3 RELAY STOP TIME\r\n");
+1353   7                                                                              WriteRelayValues.K3StopTime =0;
+1354   7                                                                              LCDGotoXY(15,4);
+1355   7                                                                              KeyIndex =0;
+1356   7                                                                      }
+1357   6                                                              }
+1358   5                                                      }
+1359   4                                                      KeyIndex =0;
+1360   4      //                                              DecimalPoint =0;
+1361   4                                              break;
+1362   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:   //pulse relay settings
+1363   4                                                      if(TestType == START_DURATION)
+1364   4                                                      {
+1365   5                                                              if(!KeyIndex)
+1366   5                                                              {
+1367   6                                                                      WriteRelayValues.PRStart = ReadRelayValues.PRStart;
+1368   6                                                                      LCDGotoXY(9,3);
+1369   6                                                                      sprintf(KeyBuffer,"%03ld",(ReadRelayValues.PRDuration));                        //Modified from 1.1 float to  3 decimal
+             -s
+1370   6                                                                      TestType =DURATION;
+1371   6                                                              }
+1372   5      
+1373   5                                                              else
+1374   5                                                              {
+1375   6                                                                      WriteRelayValues.PRStart = atof(KeyBuffer)*1000;
+1376   6                                                                      if(WriteRelayValues.PRStart >=MIN_PR_START_TIME && WriteRelayValues.PRStart <=MAX_PR_START_TIME)
+1377   6                                                                      {
+1378   7                                                                              LCDGotoXY(9,3);
+1379   7                                                                              sprintf(KeyBuffer,"%03ld",(ReadRelayValues.PRDuration));                //Modified from 1.1 float to  3 decimal
+             -s
+1380   7                                                                              TestType =DURATION;
+1381   7                                                                      }
+1382   6                                                                      else
+1383   6                                                                      {
+1384   7                                                                              if(gbDebugPort)
+1385   7                                                                                      Put_String_UART1("\r\n INVALID PR START  TIME\r\n");
+1386   7                                                                              LCDGotoXY(10,2);
+1387   7                                                                              KeyIndex =0;
+1388   7                                                                              LCDInstWrite(LCD_BLINKING_ON);
+1389   7                                                                              TestType = START_DURATION;
+1390   7                                                                      }
+1391   6                                                              }
+1392   5                                                      }
+1393   4                                                      else if(TestType == DURATION)
+1394   4                                                      {
+1395   5                                                              if(!KeyIndex)
+1396   5                                                              {
+1397   6                                                                      WriteRelayValues.PRDuration = ReadRelayValues.PRDuration;
+1398   6                                                                      LCDGotoXY(19,3);
+1399   6                                                                      sprintf(KeyBuffer,"%02d",ReadRelayValues.PRCount);
+1400   6                                                                      TestType =COUNT;
+1401   6                                                              }
+1402   5                                                              else
+1403   5                                                              {
+1404   6                                                                      WriteRelayValues.PRDuration = atoi(KeyBuffer);  // Changed the PRDuration from Sec to msec by remov
+             -ing *1000
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 24  
+
+1405   6                                                                      if(WriteRelayValues.PRDuration >=MIN_PR_DURATION && WriteRelayValues.PRDuration <= MAX_PR_DURATION
+             -)
+1406   6                                                                      {
+1407   7                                                                              LCDGotoXY(19,3);
+1408   7                                                                              sprintf(KeyBuffer,"%02d",ReadRelayValues.PRCount);
+1409   7                                                                              TestType =COUNT;
+1410   7                                                                      }
+1411   6                                                                      else
+1412   6                                                                      {
+1413   7                                                                              if(gbDebugPort)
+1414   7                                                                                      Put_String_UART1("\r\n INVALID PR DURATION  TIME\r\n");
+1415   7                                                                              LCDGotoXY(9,3);
+1416   7                                                                              KeyIndex =0;
+1417   7                                                                              TestType =DURATION;
+1418   7                                                                      }
+1419   6                                                              }
+1420   5                                                      }
+1421   4                                                      else if(TestType ==COUNT)
+1422   4                                                      {
+1423   5                                                              if(!KeyIndex)
+1424   5                                                              {
+1425   6                                                                      WriteRelayValues.PRCount = ReadRelayValues.PRCount;
+1426   6                                                                      LCDGotoXY(13,4);
+1427   6                                                                      sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.Interval/1000.0));
+1428   6                                                                      LCDInstWrite(LCD_BLINKING_ON);
+1429   6                                                                      TestType =INTERVAL;
+1430   6                                                              }
+1431   5                                                              else
+1432   5                                                              {
+1433   6                                                                      WriteRelayValues.PRCount = atoi(KeyBuffer);
+1434   6                                                                      if(WriteRelayValues.PRCount >= MIN_PR_COUNT_TIME && WriteRelayValues.PRCount <=MAX_PR_COUNT_TIME)
+1435   6                                                                      {
+1436   7                                                                              LCDGotoXY(13,4);
+1437   7                                                                              sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.Interval/1000.0));
+1438   7                                                                              LCDInstWrite(LCD_BLINKING_ON);
+1439   7                                                                              TestType =INTERVAL;
+1440   7                                                                      }
+1441   6                                                                      else
+1442   6                                                                      {
+1443   7                                                                              if(gbDebugPort)
+1444   7                                                                                      Put_String_UART1("\r\n INVALID PR COUNT  TIME\r\n");
+1445   7                                                                              LCDGotoXY(19,3);
+1446   7                                                                              KeyIndex =0;
+1447   7      //                                                                      DecimalPoint =0;
+1448   7                                                                              TestType =COUNT;
+1449   7                                                                      }
+1450   6                                                              }
+1451   5                                                      }
+1452   4                                                      else if(TestType ==INTERVAL)
+1453   4                                                      {
+1454   5                                                              if(!KeyIndex)
+1455   5                                                              {
+1456   6                                                                      WriteRelayValues.Interval = ReadRelayValues.Interval;
+1457   6                                                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+1458   6                                                                      WriteRelayValues.FirstSection = ReadRelayValues.FirstSection;
+1459   6                                                                      WriteRelayValues.SecondSection = ReadRelayValues.SecondSection;
+1460   6      
+1461   6                                                                      WriteRelayValues.K1StartTime = ReadRelayValues.K1StartTime;
+1462   6                                                                      WriteRelayValues.K1StopTime = ReadRelayValues.K1StopTime;
+1463   6                                                                      WriteRelayValues.K2StartTime = ReadRelayValues.K2StartTime;
+1464   6                                                                      WriteRelayValues.K2StopTime = ReadRelayValues.K2StopTime;
+1465   6                                                                      WriteRelayValues.K3StartTime = ReadRelayValues.K3StartTime;
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 25  
+
+1466   6                                                                      WriteRelayValues.K3StopTime = ReadRelayValues.K3StopTime;
+1467   6                                                                      strcpy(WriteRelayValues.BatteryName,ReadRelayValues.BatteryName);
+1468   6                                                                      WriteRelayValues.IgnitionDuration = ReadRelayValues.IgnitionDuration;
+1469   6                                                                      WriteRelayValues.Testduration = ReadRelayValues.Testduration;
+1470   6                                                                      FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+1471   6                                                                      FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay));
+1472   6                                                                              
+1473   6                                                                      LCDInstWrite(LCD_BLINKING_OFF);
+1474   6                                                                      LCDGotoXY(12,1);
+1475   6                                                                      LCDPutText("  ");
+1476   6                                                                      LCDWriteLine(2,"                    ",2);
+1477   6      
+1478   6                                                                      RelaySelections();
+1479   6                                                              }
+1480   5                                                              else
+1481   5                                                              {
+1482   6                                                                      WriteRelayValues.Interval=atof(KeyBuffer)*1000;
+1483   6                                                                      if(WriteRelayValues.Interval >=MIN_PR_INTERVAL_TIME && WriteRelayValues.Interval <=MAX_PR_INTERVAL
+             -_TIME)
+1484   6                                                                      {
+1485   7                                                                              if((WriteRelayValues.PRStart+(WriteRelayValues.PRCount*WriteRelayValues.Interval) - WriteRelayVal
+             -ues.PRDuration) <120000)
+1486   7                                                                              {
+1487   8                                                                                      LCDInstWrite(LCD_BLINKING_OFF);
+1488   8                                                                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+1489   8                                                                                      WriteRelayValues.FirstSection = ReadRelayValues.FirstSection;
+1490   8                                                                                      WriteRelayValues.SecondSection = ReadRelayValues.SecondSection;
+1491   8      
+1492   8                                                                                      WriteRelayValues.K1StartTime = ReadRelayValues.K1StartTime;
+1493   8                                                                                      WriteRelayValues.K1StopTime = ReadRelayValues.K1StopTime;
+1494   8                                                                                      WriteRelayValues.K2StartTime = ReadRelayValues.K2StartTime;
+1495   8                                                                                      WriteRelayValues.K2StopTime = ReadRelayValues.K2StopTime;
+1496   8                                                                                      WriteRelayValues.K3StartTime = ReadRelayValues.K3StartTime;
+1497   8                                                                                      WriteRelayValues.K3StopTime = ReadRelayValues.K3StopTime;
+1498   8                                                                                      WriteRelayValues.IgnitionDuration = ReadRelayValues.IgnitionDuration;
+1499   8                                                                                      WriteRelayValues.Testduration = ReadRelayValues.Testduration;
+1500   8                      
+1501   8                                                                                      strcpy(WriteRelayValues.BatteryName,ReadRelayValues.BatteryName);
+1502   8                                                                                      FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+1503   8                                                                                      FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay));
+1504   8                                                                                      LCDInstWrite(LCD_BLINKING_OFF);
+1505   8                                                                                      LCDGotoXY(12,1);
+1506   8                                                                                      LCDPutText("  ");
+1507   8                                                                                      LCDWriteLine(2,"                    ",2);
+1508   8                                                                                      RelaySelections();
+1509   8                                                                              }
+1510   7                                                                              else
+1511   7                                                                              {
+1512   8                                                                                      LCDWriteLine(2,"INVALID SETTINGS(PR)",2);
+1513   8                                                                                      LCDInstWrite(LCD_BLINKING_OFF);
+1514   8                                                                                      RelaySelections();
+1515   8                                                                              }
+1516   7      
+1517   7                                                                      }
+1518   6                                                                      else
+1519   6                                                                      {
+1520   7                                                                              if(gbDebugPort)
+1521   7                                                                                      Put_String_UART1("\r\n INVALID PR INTERVAL  TIME\r\n");
+1522   7                                                                              LCDGotoXY(13,4);
+1523   7                                                                              KeyIndex =0;
+1524   7      //                                                                      DecimalPoint =0;
+1525   7                                                                              TestType =INTERVAL;
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 26  
+
+1526   7                                                                      }
+1527   6                                                              }
+1528   5                                                      }
+1529   4                                                      KeyIndex = 0;
+1530   4      //                                              DecimalPoint =0;
+1531   4                                              break;
+1532   4                                              case TBT_MMI_RELAY_SELECTION_KEYS:  //added 07 july06
+1533   4                                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+1534   4                                                  IgniterSettings();  
+1535   4                                              break;  
+1536   4                                              case TBT_MMI_IGNITE_KEY:
+1537   4                                                      if(TestType ==IGN_DURATION)
+1538   4                                                      {
+1539   5                                                              if(!KeyIndex)
+1540   5                                                              {
+1541   6                                                                      WriteRelayValues.IgnitionDuration = ReadRelayValues.IgnitionDuration;
+1542   6                                                                      MMI_screen = TBT_MMI_IGNITE_KEY;
+1543   6                                                                      sprintf(KeyBuffer,"%03ld",ReadRelayValues.Testduration);
+1544   6                                                                      LCDGotoXY(15,4);
+1545   6      //                                                              TestType = 0xff;
+1546   6                                                                      TestType = TEST_DURATION;
+1547   6                                                              }
+1548   5                                                              else
+1549   5                                                              {
+1550   6                                                                      WriteRelayValues.IgnitionDuration = atoi(KeyBuffer);
+1551   6                                                                      MMI_screen = TBT_MMI_IGNITE_KEY;
+1552   6                                                                      LCDGotoXY(15,4);
+1553   6                                                                      TestType = TEST_DURATION;
+1554   6      //                                                              TestType = 0xff;
+1555   6                                                              }
+1556   5                                                      }
+1557   4                                                      else
+1558   4                                                      {
+1559   5                                                              if(!KeyIndex)
+1560   5                                                              {
+1561   6                                                                      WriteRelayValues.Testduration = ReadRelayValues.Testduration;
+1562   6                                                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+1563   6                                                                      WriteRelayValues.FirstSection = ReadRelayValues.FirstSection;
+1564   6                                                                      WriteRelayValues.SecondSection = ReadRelayValues.SecondSection;
+1565   6      
+1566   6                                                                      WriteRelayValues.K1StartTime = ReadRelayValues.K1StartTime;
+1567   6                                                                      WriteRelayValues.K1StopTime = ReadRelayValues.K1StopTime;
+1568   6                                                                      WriteRelayValues.K2StartTime = ReadRelayValues.K2StartTime;
+1569   6                                                                      WriteRelayValues.K2StopTime = ReadRelayValues.K2StopTime;                                                                               WriteRelayValues.K3StartTime = 
+             -ReadRelayValues.K3StartTime;
+1570   6                                                                      WriteRelayValues.K3StopTime = ReadRelayValues.K3StopTime;
+1571   6                                                                      WriteRelayValues.PRStart = ReadRelayValues.PRStart;
+1572   6                                                                      WriteRelayValues.PRDuration = ReadRelayValues.PRDuration;
+1573   6                                                                      WriteRelayValues.PRCount = ReadRelayValues.PRCount;
+1574   6                                                                      WriteRelayValues.Interval = ReadRelayValues.Interval;
+1575   6      
+1576   6                                                                      strcpy(WriteRelayValues.BatteryName,ReadRelayValues.BatteryName);
+1577   6                                                                      FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+1578   6                                                                      FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay));
+1579   6                                                                              
+1580   6                                                                      LCDInstWrite(LCD_BLINKING_OFF);
+1581   6                                                                      TestType = 0xff;
+1582   6                                                                      MainMenu();   //added on 07 July
+1583   6                                                              }
+1584   5                                                              else
+1585   5                                                              {
+1586   6      //                                                              WriteRelayValues.Testduration = atof(KeyBuffer)*1000;
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 27  
+
+1587   6                                                                      WriteRelayValues.Testduration = atoi(KeyBuffer); //changed from atof
+1588   6                                                                      if(WriteRelayValues.Testduration*1000 <=120000)
+1589   6                                                                      {
+1590   7                                                                              if((WriteRelayValues.PRStart+(WriteRelayValues.PRCount*WriteRelayValues.Interval) - WriteRelayVal
+             -ues.PRDuration) <(WriteRelayValues.Testduration*1000))
+1591   7                                                                              {
+1592   8                                                                                      LCDInstWrite(LCD_BLINKING_OFF);
+1593   8                                                                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+1594   8                                                                                      WriteRelayValues.FirstSection = ReadRelayValues.FirstSection;
+1595   8                                                                                      WriteRelayValues.SecondSection = ReadRelayValues.SecondSection;
+1596   8      
+1597   8                                                                                      WriteRelayValues.K1StartTime = ReadRelayValues.K1StartTime;
+1598   8                                                                                      WriteRelayValues.K1StopTime = ReadRelayValues.K1StopTime;
+1599   8                                                                                      WriteRelayValues.K2StartTime = ReadRelayValues.K2StartTime;
+1600   8                                                                                      WriteRelayValues.K2StopTime = ReadRelayValues.K2StopTime;
+1601   8                                                                                      WriteRelayValues.K3StartTime = ReadRelayValues.K3StartTime;
+1602   8                                                                                      WriteRelayValues.K3StopTime = ReadRelayValues.K3StopTime;
+1603   8                                                                                      WriteRelayValues.PRStart = ReadRelayValues.PRStart;
+1604   8                                                                                      WriteRelayValues.PRDuration = ReadRelayValues.PRDuration;
+1605   8                                                                                      WriteRelayValues.PRCount = ReadRelayValues.PRCount;
+1606   8                                                                                      WriteRelayValues.Interval = ReadRelayValues.Interval;
+1607   8                                                                                      strcpy(WriteRelayValues.BatteryName,ReadRelayValues.BatteryName);                                                               
+1608   8                                                                                      FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+1609   8                                                                                      FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay));
+1610   8                                                                                      TestType = 0xff;
+1611   8                                                                                      MainMenu();   //added on 07 July
+1612   8                                                                              }
+1613   7                                                                              else
+1614   7                                                                              {
+1615   8                                                                                      LCDWriteLine(2,"INVALID SETTINGS(TD)",2);
+1616   8                                                                                      RelaySelections();
+1617   8                                                                              }
+1618   7                                                                      }
+1619   6                                                                      else
+1620   6                                                                      {
+1621   7                                                                              LCDGotoXY(15,4);
+1622   7                                                                              TestType = 0xff;
+1623   7                                                                      }
+1624   6                                                              }
+1625   5                                                      }
+1626   4                                                      KeyIndex = 0;
+1627   4      //                                              DecimalPoint =0;
+1628   4                                              break;
+1629   4                                              case TBT_MMI_CONNECT_BATTERY:
+1630   4                                                      ConnectLoads();
+1631   4                                              break;
+1632   4                                              case TBT_MMI_CONNECT_LOAD:
+1633   4                                                      ResetToAbort();
+1634   4                                              break;
+1635   4                                              case TBT_MMI_TEST_PROCESSING:
+1636   4                                                      TestProcessing();
+1637   4                                              break;
+1638   4                                              case TBT_MMI_SECTION_SETTINGS:
+1639   4                                                      
+1640   4                                                      if(TestType ==TBT_MMI_SECTION1_SETTINGS)
+1641   4                                                      {
+1642   5                                                              if(!KeyIndex)
+1643   5                                                              {
+1644   6                                                                      WriteRelayValues.FirstSection = ReadRelayValues.FirstSection;
+1645   6                                                                      sprintf(KeyBuffer,"%02d",((unsigned int)ReadRelayValues.SecondSection));
+1646   6                                                                      LCDGotoXY(14,4);
+1647   6                                                                      TestType = TBT_MMI_SECTION2_SETTINGS;
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 28  
+
+1648   6                                                              }
+1649   5                                                              else
+1650   5                                                              {
+1651   6                                                                      KeyIndex =0;
+1652   6                                                                      WriteRelayValues.FirstSection = atoi(KeyBuffer);
+1653   6                                                                      if(WriteRelayValues.FirstSection <=0x03)
+1654   6                                                                      {
+1655   7                                                                              LCDGotoXY(14,4);
+1656   7                                                                              
+1657   7                                                                              TestType = TBT_MMI_SECTION2_SETTINGS;
+1658   7                                                                      }
+1659   6                                                                      else
+1660   6                                                                      {
+1661   7                                                                              LCDGotoXY(14,3);
+1662   7                                                                              sprintf(KeyBuffer,"%02d",((unsigned int)ReadRelayValues.FirstSection));
+1663   7                                                                              TestType = TBT_MMI_SECTION1_SETTINGS;
+1664   7                                                                      }
+1665   6                                                              }
+1666   5                                                      }
+1667   4                                                      else if(TestType ==TBT_MMI_SECTION2_SETTINGS)
+1668   4                                                      {
+1669   5                                                              if(!KeyIndex)
+1670   5                                                              {
+1671   6                                                                      WriteRelayValues.SecondSection = ReadRelayValues.SecondSection;
+1672   6                                                                      TestType = 0xff;
+1673   6                                                                      LCDInstWrite(LCD_BLINKING_OFF);
+1674   6                                                                      FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+1675   6                                                                      WriteRelayValues.K1StartTime = ReadRelayValues.K1StartTime;
+1676   6                                                                      WriteRelayValues.K1StopTime = ReadRelayValues.K1StopTime;
+1677   6                                                                      WriteRelayValues.K2StartTime = ReadRelayValues.K2StartTime;
+1678   6                                                                      WriteRelayValues.K2StopTime = ReadRelayValues.K2StopTime;
+1679   6                                                                      WriteRelayValues.K3StartTime = ReadRelayValues.K3StartTime;
+1680   6                                                                      WriteRelayValues.K3StopTime = ReadRelayValues.K3StopTime;
+1681   6                                                                      WriteRelayValues.PRStart = ReadRelayValues.PRStart;
+1682   6                                                                      WriteRelayValues.PRDuration = ReadRelayValues.PRDuration;
+1683   6                                                                      WriteRelayValues.PRCount = ReadRelayValues.PRCount;
+1684   6                                                                      WriteRelayValues.Interval = ReadRelayValues.Interval;
+1685   6                                                                      strcpy(WriteRelayValues.BatteryName,ReadRelayValues.BatteryName);
+1686   6                                                                      WriteRelayValues.IgnitionDuration = ReadRelayValues.IgnitionDuration;
+1687   6                                                                      WriteRelayValues.Testduration = ReadRelayValues.Testduration;
+1688   6                                                                      FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+1689   6                                                                      FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay));
+1690   6                                                                      MainMenu();
+1691   6                                                              }
+1692   5                                                              else
+1693   5                                                              {
+1694   6                                                                      KeyIndex =0;
+1695   6                                                                      WriteRelayValues.SecondSection = atoi(KeyBuffer);
+1696   6                                                                      if(WriteRelayValues.SecondSection <=0x03)
+1697   6                                                                      {
+1698   7                                                                              TestType = 0xff;
+1699   7                                                                              LCDInstWrite(LCD_BLINKING_OFF);
+1700   7                                                                              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+1701   7                                                                              WriteRelayValues.K1StartTime = ReadRelayValues.K1StartTime;
+1702   7                                                                              WriteRelayValues.K1StopTime  = ReadRelayValues.K1StopTime;
+1703   7                                                                              WriteRelayValues.K2StartTime = ReadRelayValues.K2StartTime;
+1704   7                                                                              WriteRelayValues.K2StopTime  = ReadRelayValues.K2StopTime;
+1705   7                                                                              WriteRelayValues.K3StartTime = ReadRelayValues.K3StartTime;
+1706   7                                                                              WriteRelayValues.K3StopTime  = ReadRelayValues.K3StopTime;
+1707   7                                                                              WriteRelayValues.PRStart     = ReadRelayValues.PRStart;
+1708   7                                                                              WriteRelayValues.PRDuration  = ReadRelayValues.PRDuration;
+1709   7                                                                              WriteRelayValues.PRCount     = ReadRelayValues.PRCount;
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 29  
+
+1710   7                                                                              WriteRelayValues.Interval    = ReadRelayValues.Interval;
+1711   7                                                                              strcpy(WriteRelayValues.BatteryName,ReadRelayValues.BatteryName);
+1712   7                                                                              WriteRelayValues.IgnitionDuration = ReadRelayValues.IgnitionDuration;
+1713   7                                                                              WriteRelayValues.Testduration = ReadRelayValues.Testduration;
+1714   7                                                                              FLASH_PageErase(RELAY_DATA_ADDRESS(BatteryIndex));
+1715   7                                                                              FLASH_Write (RELAY_DATA_ADDRESS(BatteryIndex), (char*) &WriteRelayValues,sizeof(struct Relay));
+1716   7                                                                              MainMenu();
+1717   7                                                                              }
+1718   6                                                                      else
+1719   6                                                                      {
+1720   7                                                                              LCDGotoXY(11,4);
+1721   7                                                                              sprintf(KeyBuffer,"%02d",((unsigned int)ReadRelayValues.SecondSection));
+1722   7                                                                              TestType = TBT_MMI_SECTION2_SETTINGS;
+1723   7                                                                      }
+1724   6                                                              }
+1725   5                                                      }
+1726   4                      
+1727   4                                              
+1728   4                                              break;
+1729   4      
+1730   4                                      }
+1731   3                              break;
+1732   3                              case CLEAR_KEY : //clear key(# key on keypad)
+1733   3                                      switch(MMI_screen)
+1734   3                                      {
+1735   4                                              case TBT_MMI_BATTERY_NUMERIC_KEY:
+1736   4                                                              LCDInstWrite(LCD_BLINKING_OFF);
+1737   4                                                              TestConfigurations();
+1738   4                                              break;
+1739   4                                              case TBT_MMI_TEST_SELECTION:
+1740   4                                              case TBT_MMI_IGNITE_KEY:
+1741   4                                              case TBT_MMI_RESET_ABORT:
+1742   4                                              case TBT_MMI_TEST_CONFIGURATION:
+1743   4                                              case TBT_MMI_DATE_TIME_SETTINGS:
+1744   4                                              case TBT_MMI_CONNECT_BATTERY:  //added on july 07
+1745   4                                              case TBT_MMI_CONNECT_LOAD:
+1746   4                                              case TBT_MMI_RELAY_SELECTION_KEYS:  //added on july 70
+1747   4                                              case TBT_MMI_TEST_PROCESSING:
+1748   4                                              case TBT_MMI_TEST_COMPLETED:  //for testing only
+1749   4                                              case SETTINGS:
+1750   4                                              case TBT_MMI_SECTION_SETTINGS:
+1751   4                                              case TBT_MMI_RECORD_INFO:  
+1752   4                                              case TBT_MMI_CONDITION_MENU:
+1753   4                                                      LCDInstWrite(LCD_BLINKING_OFF);
+1754   4                                                      MainMenu();
+1755   4                                              break;
+1756   4                                              case TBT_MMI_NEW_RELAY_KEY1:
+1757   4                                              case TBT_MMI_NEW_RELAY_KEY1_PR:
+1758   4                                              case TBT_MMI_NEW_RELAY_KEY1_K3:
+1759   4                                              case TBT_MMI_NEW_RELAY_KEY1_K2:
+1760   4                                                      LCDWriteLine(2,"                    ",2);
+1761   4                                                      LCDInstWrite(LCD_BLINKING_OFF);
+1762   4                                                      LCDGotoXY(12,1);
+1763   4                                                      LCDPutText("  ");
+1764   4                                                              
+1765   4                                                      RelaySelections();
+1766   4                                              break;  
+1767   4                                              case TBT_MMI_CONDITION_50_1:
+1768   4                                              case TBT_MMI_CONDITION_50_2:
+1769   4                                              case TBT_MMI_CONDITION_50_3:
+1770   4                                              case TBT_MMI_CONDITION_50_4:
+1771   4                                              case TBT_MMI_CONDITION_50_5:
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 30  
+
+1772   4                                                      LCDInstWrite(LCD_BLINKING_OFF);
+1773   4                                                      TestConditoion_Menu();
+1774   4                                              break;
+1775   4                                      }
+1776   3                              break;
+1777   3                              case DECIMAL_POINT_KEY: //decimal key('C' key on keypad)
+1778   3      
+1779   3      
+1780   3                              break;
+1781   3                              case RESET_KEY:  //reset key('D' key on Keypad)
+1782   3                                      SFRPAGE = 0x00;
+1783   3                                      RSTSRC |= 0x10;  //reset the controller
+1784   3                              break;
+1785   3                                                      
+1786   3                              default :
+1787   3                                      //                RecordsInformation();                                                                                         
+1788   3                              break;
+1789   3                      }//switch
+1790   2      
+1791   2              }//while                
+1792   1      
+1793   1      } //main
+1794          
+1795          //scan the input from the keypad and strores in a buffer.
+1796          void ReadInput(unsigned char KeyValue,unsigned char CountMax)
+1797          {
+1798   1              switch(TestType)
+1799   1              {                                               
+1800   2                      case IGN_DURATION:
+1801   2                      case TEST_DURATION:
+1802   2                              if(KeyIndex <CountMax)
+1803   2                              {
+1804   3                                      LCDPutChar(KeyValue);
+1805   3                                      KeyBuffer[KeyIndex]=KeyValue;
+1806   3                                      if(KeyIndex <CountMax-1)
+1807   3                                              KeyIndex++;
+1808   3                                      else
+1809   3                                              LCDInstWrite(LCD_CURSOR_LEFT);
+1810   3                              }
+1811   2                      break;
+1812   2                      case K1_RELAY:
+1813   2                      case K2_RELAY:
+1814   2                      case K3_RELAY:
+1815   2                      case K3_RELAY_STOP:
+1816   2                      case K2_RELAY_STOP:
+1817   2                      case K1_RELAY_STOP:
+1818   2                      case START_DURATION:
+1819   2                      case INTERVAL:
+1820   2      
+1821   2                              if(KeyIndex <=CountMax)
+1822   2                              {
+1823   3                                      if(KeyIndex == 2 )
+1824   3                                      {
+1825   4                                              LCDPutChar(KeyValue);
+1826   4                                              LCDPutChar('.');
+1827   4                                              KeyBuffer[KeyIndex++]=KeyValue;
+1828   4                                              KeyBuffer[KeyIndex++]='.';
+1829   4                                      }
+1830   3                                      else
+1831   3                                      {
+1832   4                                              LCDPutChar(KeyValue);
+1833   4                                              KeyBuffer[KeyIndex]=KeyValue;
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 31  
+
+1834   4                                              if(KeyIndex <4)
+1835   4                                                      KeyIndex++;
+1836   4                                              else
+1837   4                                                      LCDInstWrite(LCD_CURSOR_LEFT);
+1838   4                                      }
+1839   3                              }
+1840   2                      break;
+1841   2                      case COUNT:
+1842   2                              if(KeyIndex == 0)
+1843   2                              {
+1844   3                                      LCDInstWrite(LCD_BLINKING_ON);
+1845   3                                      LCDPutChar(KeyValue);
+1846   3                                      KeyBuffer[KeyIndex++]=KeyValue;
+1847   3                              }
+1848   2                              else if(KeyIndex == 1)
+1849   2                              {
+1850   3                                      LCDPutChar(KeyValue);
+1851   3                                      KeyBuffer[KeyIndex]=KeyValue;
+1852   3                                      LCDInstWrite(LCD_CURSOR_LEFT);
+1853   3                              }
+1854   2      
+1855   2                      break;
+1856   2                      case DURATION:
+1857   2                                  if(KeyIndex == 0)
+1858   2                              {
+1859   3                                  LCDInstWrite(LCD_BLINKING_ON);        // Added on 7-11-06
+1860   3                                      LCDPutChar(KeyValue);
+1861   3                                      KeyBuffer[KeyIndex++]=KeyValue;
+1862   3                                      //LCDPutChar('.');                                        // Modified on 7-11-06
+1863   3                                      //KeyBuffer[KeyIndex]='.';                    // Modified on 7-11-06
+1864   3                                      //KeyIndex++;                                             // Modified on 7-11-06
+1865   3                              }
+1866   2                              else if(KeyIndex == 1)                         // Condition added on 7-11-06
+1867   2                              {
+1868   3                                      LCDPutChar(KeyValue);
+1869   3                                      KeyBuffer[KeyIndex++]=KeyValue;
+1870   3                              }
+1871   2                              else if(KeyIndex == 2)
+1872   2                              {
+1873   3                                      LCDPutChar(KeyValue);
+1874   3                                      KeyBuffer[KeyIndex]=KeyValue;
+1875   3                                      LCDInstWrite(LCD_CURSOR_LEFT);
+1876   3                              }
+1877   2                      break;
+1878   2                      case BATTERY_SERIAL:
+1879   2                              if(KeyIndex <=CountMax)
+1880   2                              {
+1881   3                                      LCDPutChar(KeyValue);
+1882   3                                      KeyBuffer[KeyIndex]=KeyValue;
+1883   3                                      if(KeyIndex <CountMax)
+1884   3                                              KeyIndex++;
+1885   3                                      else
+1886   3                                              LCDInstWrite(LCD_CURSOR_LEFT);
+1887   3                              }
+1888   2                      break;
+1889   2                      case TIME_SETTINGS:
+1890   2                      case DATE_SETTINGS:
+1891   2                              if(KeyIndex <=CountMax)
+1892   2                              {
+1893   3                                      LCDPutChar(KeyValue);
+1894   3                                      KeyBuffer[KeyIndex]=KeyValue;
+1895   3                                      if(KeyIndex == 1|| KeyIndex == 4)
+C51 COMPILER V7.05   MAIN                                                                  10/15/2019 17:32:06 PAGE 32  
+
+1896   3                                      {
+1897   4                                              LCDInstWrite(LCD_CURSOR_RIGHT);
+1898   4                                              KeyIndex++;
+1899   4                                      }
+1900   3                                      if(KeyIndex <CountMax)
+1901   3                                              KeyIndex++;
+1902   3                                      else
+1903   3                                              LCDInstWrite(LCD_CURSOR_LEFT);
+1904   3                              }
+1905   2                      break;
+1906   2              }
+1907   1      
+1908   1      }
+1909          //Intialize all global variables
+1910          void IntializeVariables()
+1911          {
+1912   1              unsigned char idata Index;
+1913   1              gbDebugPort = ENABLE_DISABLE_DEBUGGING;  //1 - enable debugging 0= disable debugging
+1914   1              RecordsUsed     =       0;
+1915   1              completedPacket =       0;
+1916   1              KeyIndex                =       0;
+1917   1              TransmitChksum  =       0;
+1918   1              RecordsUsed     =       0;
+1919   1              FreeRecords     =       0;
+1920   1              Remote                  =       0;
+1921   1      
+1922   1              memset(&stRecordInfo,0,sizeof(struct Record));
+1923   1              memset(&WriteRelayValues,0,sizeof(struct Relay));
+1924   1              memset(&ReadRelayValues,0,sizeof(struct Relay));
+1925   1              memset(&stRecordReadInfo,0,sizeof(struct Record));
+1926   1              memset(&ADCCh,0,sizeof(ADCCh));
+1927   1              //finding out records
+1928   1              for(Index=1;Index<=MAX_RECORDS;Index++)
+1929   1              {
+1930   2                      FLASH_Read( DATA_RECORD_ADDRESS(Index),(char*) &stRecordReadInfo,sizeof(struct Record));
+1931   2                      if((strncmp(stRecordReadInfo.Battery1Type,"ECT-",4) == 0) )
+1932   2                              RecordsUsed++;
+1933   2                      else
+1934   2                              FreeRecords++;
+1935   2                      
+1936   2              }
+1937   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =  11574    ----
+   CONSTANT SIZE    =    477    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      5      13
+   IDATA SIZE       =   ----       2
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

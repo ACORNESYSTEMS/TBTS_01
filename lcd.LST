@@ -1,0 +1,812 @@
+C51 COMPILER V7.05   LCD                                                                   10/15/2019 17:32:08 PAGE 1   
+
+
+C51 COMPILER V7.05, COMPILATION OF MODULE LCD
+OBJECT MODULE PLACED IN lcd.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE lcd.c DB OE BR INCDIR(C:\SiLabs\MCU\Inc)
+
+stmt level    source
+
+   1          #include <functions.h>
+   2          #include "ds1307.h"
+   3          #include "lcd.h"
+   4          #include "Record.h"
+   5          
+   6          enum Screens MMI_screen;
+   7          extern struct Relay xdata WriteRelayValues;
+   8          extern struct Relay xdata ReadRelayValues;
+   9          extern struct time xdata stTime;
+  10          extern unsigned char xdata RecordsUsed;
+  11          extern unsigned char idata FreeRecords;
+  12          
+  13          extern void SetTime_Date(struct time stTime);
+  14          extern void GetTime_Date(struct time *stTime);
+  15          
+  16          extern unsigned char xdata ActiveBat1Info[12];
+  17          extern unsigned char xdata ActiveBat2Info[12];
+  18          //extern unsigned char BatType;
+  19          
+  20          extern unsigned char BatteryIndex;
+  21          
+  22          unsigned char xdata KeyBuffer[14];
+  23          unsigned char xdata     LCD_CurrentX=1;
+  24          unsigned char xdata     LCD_CurrentY=1;
+  25          unsigned char idata FileName;
+  26          unsigned char xdata TestType;
+  27          unsigned char idata TotalRecords;
+  28          unsigned char idata KeyIndex;
+  29          
+  30          
+  31          extern void SetTime_Date(struct time stTime);
+  32          extern void GetTime_Date(struct time *stTime);
+  33          
+  34          
+  35          /****************************************************************************
+  36                          LCD INTIALISATIONS
+  37          *****************************************************************************/
+  38          //lcd intialization
+  39          
+  40          /*
+  41          void LcdInit()
+  42          {
+  43                  char SRFPAGE_SAVE = SFRPAGE;
+  44                  SFRPAGE = CONFIG_PAGE;
+  45                          
+  46                  LCDInstWrite(0X30);
+  47                  #ifdef EXTERNAL_CLK
+  48                  delay(0x1fff);
+  49                  delay(0x1fff);  // DELAY
+  50                  delay(0x1fff);  // DELAY2
+  51          #else
+  52                  delay(0x1fff);
+  53                  delay(0x1fff);
+  54                  delay(0x1fff);  // DELAY2
+  55          #endif
+C51 COMPILER V7.05   LCD                                                                   10/15/2019 17:32:08 PAGE 2   
+
+  56                  LCDInstWrite(0x30);
+  57          #ifdef EXTERNAL_CLK
+  58                  delay(0x1fff);
+  59                  delay(0x1fff);  // DELAY
+  60                  delay(0x1fff);  // DELAY2
+  61          #else
+  62                  delay(0x1fff);
+  63                  delay(0x1fff);
+  64                  delay(0x1fff);  // DELAY2
+  65          #endif
+  66                  LCDInstWrite(0x30);
+  67          #ifdef EXTERNAL_CLK
+  68                  delay(0x1fff);
+  69                  delay(0x1fff);  // DELAY
+  70                  delay(0x1fff);  // DELAY2
+  71          #else
+  72                  delay(0x1fff);
+  73                  delay(0x1fff);
+  74                  delay(0x1fff);  // DELAY2
+  75          #endif
+  76                  LCDInstWrite(0x38);
+  77                  LCDInstWrite(0x0C);
+  78                  LCDInstWrite(0x01);
+  79                  LCDInstWrite(0x06);  // Auto increment cursor position
+  80                  SFRPAGE = SRFPAGE_SAVE;
+  81          
+  82          }
+  83          */
+  84          /***************************************************************************************************
+  85                                                                          LCD INSTRUCTION WRITE
+  86          ****************************************************************************************************/
+  87          //Write command to LCD
+  88          
+  89          /*
+  90          void LCDInstWrite(unsigned char instruction)
+  91          {
+  92                  char SRFPAGE_SAVE = SFRPAGE;
+  93                  SFRPAGE = CONFIG_PAGE;  
+  94                  LCD_RS = 0;
+  95                  LCD_E  = 0;
+  96                  LCD_RW = 0;
+  97                  LCD_DATA = instruction;
+  98                  LCD_E  = 1;
+  99          #ifdef EXTERNAL_CLK
+ 100                  _nop_();
+ 101                  _nop_();
+ 102                  _nop_();
+ 103                  _nop_();
+ 104                  _nop_();
+ 105                  _nop_();
+ 106                  delay(0x2F);
+ 107                  LCD_E  = 0;
+ 108                  delay(0x2F);
+ 109          #else
+ 110                  _nop_();
+ 111                  _nop_();
+ 112                  _nop_();
+ 113                  _nop_();
+ 114                  _nop_();
+ 115                  _nop_();
+ 116                  delay(0xFF);
+ 117                  LCD_E  = 0;
+C51 COMPILER V7.05   LCD                                                                   10/15/2019 17:32:08 PAGE 3   
+
+ 118                  delay(0xFF);
+ 119          #endif
+ 120                  SFRPAGE = SRFPAGE_SAVE;
+ 121          
+ 122          }
+ 123          */
+ 124          /***************************************************************************************************
+ 125                                                                          LCD CHARACTER DISPLAY
+ 126          ****************************************************************************************************/
+ 127          //Wrtie data to LCD
+ 128          /*
+ 129          void LCDDataWrite(unsigned char character)
+ 130          {
+ 131                  char SRFPAGE_SAVE = SFRPAGE;
+ 132                  SFRPAGE = CONFIG_PAGE;  
+ 133                  LCD_RS = 0;
+ 134                  LCD_E  = 0;
+ 135                  LCD_RW = 0;
+ 136                  LCD_DATA = character;
+ 137                  LCD_E  = 1;
+ 138                  LCD_RS = 1;
+ 139          #ifdef EXTERNAL_CLK
+ 140                  delay(0x2F);
+ 141                  LCD_E  = 0;
+ 142                  delay(0x2F);
+ 143          #else
+ 144                  delay(0xFF);
+ 145                  LCD_E  = 0;
+ 146                  delay(0xFF);
+ 147          #endif
+ 148                  SFRPAGE = SRFPAGE_SAVE;
+ 149          
+ 150          }
+ 151          
+ 152          */
+ 153          
+ 154          //Go the perticular position on LCD
+ 155          /*
+ 156          void LCDGotoXY(unsigned char X, unsigned char Y)
+ 157          {
+ 158                  
+ 159                  char SRFPAGE_SAVE = SFRPAGE;
+ 160                  SFRPAGE = CONFIG_PAGE;  
+ 161                  if(X < 1 || X > MAX_COLUMNS)
+ 162                          return;
+ 163                  switch(Y)
+ 164                  {
+ 165                  case 1:
+ 166                          LCDInstWrite(0x80+(X-1));
+ 167                          break;
+ 168                  case 2:
+ 169                          LCDInstWrite(0xC0+(X-1));
+ 170                          break;
+ 171                  case 3:
+ 172                          LCDInstWrite(0x94+(X-1));
+ 173                          break;
+ 174                  case 4:
+ 175                          LCDInstWrite(0xD4+(X-1));
+ 176                          break;
+ 177                  default:
+ 178                          return;
+ 179                  }
+C51 COMPILER V7.05   LCD                                                                   10/15/2019 17:32:08 PAGE 4   
+
+ 180                  LCD_CurrentX=X;
+ 181                  LCD_CurrentY=Y;
+ 182                  SFRPAGE = SRFPAGE_SAVE;
+ 183          
+ 184          }
+ 185          
+ 186          //Put text on LCD
+ 187          void LCDPutText(char *datastr)
+ 188          {
+ 189                  unsigned char i;
+ 190                  char SRFPAGE_SAVE = SFRPAGE;
+ 191                  SFRPAGE = CONFIG_PAGE;  
+ 192                  for(i=0; i<strlen(datastr);i++)
+ 193                  {
+ 194                          LCD_CurrentX++;
+ 195                          LCDDataWrite(datastr[i]);
+ 196                  }
+ 197                  SFRPAGE = SRFPAGE_SAVE;
+ 198          
+ 199          }
+ 200          
+ 201          //Put char on LCD
+ 202          void LCDPutChar(unsigned char datachar)
+ 203          {
+ 204                  char SRFPAGE_SAVE = SFRPAGE;
+ 205                  SFRPAGE = CONFIG_PAGE;  
+ 206                  LCD_CurrentX++;
+ 207                  LCDDataWrite(datachar);
+ 208                  SFRPAGE = SRFPAGE_SAVE;
+ 209          }
+ 210          
+ 211          //Write data on lcd with specified line number and alignmnet
+ 212          void LCDWriteLine(unsigned char LineNo, char *datastr, unsigned char Alignment)
+ 213          {
+ 214                  char SRFPAGE_SAVE = SFRPAGE;
+ 215                  SFRPAGE = CONFIG_PAGE;  
+ 216                  LCDGotoXY(1,LineNo);
+ 217          
+ 218                  if (Alignment == 0)             // Left
+ 219                  {
+ 220                          LCDPutText(datastr);
+ 221                  }
+ 222          
+ 223                  if (Alignment == 1)   // Right 
+ 224                  {
+ 225                          LCDGotoXY(20-strlen(datastr)+1,LineNo);
+ 226                          LCDPutText(datastr);
+ 227              }
+ 228          
+ 229                  if (Alignment == 2)   // Center
+ 230                  {
+ 231                          LCDGotoXY((20-strlen(datastr))/2 +1,LineNo);
+ 232                          LCDPutText(datastr);
+ 233                  }
+ 234                  SFRPAGE = SRFPAGE_SAVE;
+ 235          
+ 236          }
+ 237          
+ 238          */
+ 239          
+ 240          
+ 241          
+C51 COMPILER V7.05   LCD                                                                   10/15/2019 17:32:08 PAGE 5   
+
+ 242          void LCDGotoXY(unsigned char X, unsigned char Y)
+ 243          {
+ 244   1              unsigned char LcdBuffer[5];
+ 245   1              if(X < 1 || X > MAX_COLUMNS)
+ 246   1                      return;
+ 247   1              sprintf(LcdBuffer,"%c%c%c%c",LCDSOM,LCDCUR,X,Y);
+ 248   1              LCDPutText(LcdBuffer);
+ 249   1              LCD_CurrentX=X;
+ 250   1              LCD_CurrentY=Y;
+ 251   1      }
+ 252          
+ 253          void LCDPutText(unsigned char datastr[])
+ 254          {
+ 255   1              unsigned char i;
+ 256   1              for(i=0; i<strlen(datastr);i++)
+ 257   1                      LCDPutChar(datastr[i]);
+ 258   1      }
+ 259          
+ 260          void LCDPutChar(unsigned char datachar)
+ 261          {
+ 262   1              char SFRPAGE_SAVE = SFRPAGE;
+ 263   1              SFRPAGE = UART1_PAGE;
+ 264   1              TI1 = 0;
+ 265   1              SBUF1 = datachar;
+ 266   1              while(TI1 != 1);
+ 267   1              TI1 = 0;
+ 268   1              SFRPAGE = SFRPAGE_SAVE;
+ 269   1      }
+ 270          
+ 271          void LCDWriteLine(unsigned char LineNo, unsigned char *datastr, unsigned char Alignment)
+ 272          {
+ 273   1      
+ 274   1              LCDGotoXY(1,LineNo);
+ 275   1      
+ 276   1              if (Alignment == 0)             // Left
+ 277   1              {
+ 278   2                      LCDPutText(datastr);
+ 279   2              }
+ 280   1      
+ 281   1              if (Alignment == 1)   // Right 
+ 282   1              {
+ 283   2                      LCDGotoXY(20-strlen(datastr)+1,LineNo);
+ 284   2                      LCDPutText(datastr);
+ 285   2          }
+ 286   1      
+ 287   1              if (Alignment == 2)   // Center
+ 288   1              {
+ 289   2                      LCDGotoXY((20-strlen(datastr))/2 +1,LineNo);
+ 290   2                      LCDPutText(datastr);
+ 291   2              }
+ 292   1      }
+ 293          
+ 294          
+ 295          void LCDInstWrite(unsigned char instruction)
+ 296          {
+ 297   1              unsigned char LcdBuffer[5];
+ 298   1              sprintf(LcdBuffer,"%c%c",LCDSOM,instruction);
+ 299   1              LCDPutText(LcdBuffer);
+ 300   1      
+ 301   1      }
+ 302          
+ 303          
+C51 COMPILER V7.05   LCD                                                                   10/15/2019 17:32:08 PAGE 6   
+
+ 304          //**********************************************************************************
+ 305          // DELAY SUBROUTINE STARTS HERE 
+ 306          //*******************************************************************************
+ 307          void delay(unsigned int  count)
+ 308          {
+ 309   1              while((count--)!= 0);
+ 310   1      }
+ 311          
+ 312          
+ 313          
+ 314          
+ 315          
+ 316          void WelcomeScreen()
+ 317          {
+ 318   1              LCDWriteLine(1,"                    ",2);
+ 319   1              LCDWriteLine(2,"  THERMAL BATTERY   ",2);
+ 320   1              LCDWriteLine(3,"    TEST SYSTEM     ",2);
+ 321   1              LCDWriteLine(4,"ECIL     SSNEXT 2019",2);
+ 322   1      }
+ 323          
+ 324          
+ 325          void MainMenu()
+ 326          {
+ 327   1              LCDWriteLine(2,"1.RECORDS STATUS    ",2);
+ 328   1              LCDWriteLine(3,"2.TEST CONFIGURATION",2);
+ 329   1              LCDWriteLine(4,"3.START TEST        ",2);
+ 330   1              MMI_screen =TBT_MMI_MAIN_MENU_KEYS;
+ 331   1      }
+ 332          
+ 333          
+ 334          void RecordsInformation()
+ 335          {
+ 336   1              LCDWriteLine(2,"USED RECORDS:       ",2);
+ 337   1              LCDGotoXY(14,2);
+ 338   1              LCDPutChar((RecordsUsed/10)+0x30);
+ 339   1              LCDPutChar((RecordsUsed%10)+0x30);
+ 340   1              LCDWriteLine(3,"FREE RECORDS:       ",2);
+ 341   1              LCDGotoXY(14,3);
+ 342   1              LCDPutChar((FreeRecords/10)+0x30);
+ 343   1              LCDPutChar((FreeRecords%10)+0x30);
+ 344   1      
+ 345   1              if(FreeRecords <=10)
+ 346   1              {
+ 347   2                      LCDWriteLine(4,"ONLY    RECORDS LEFT",2);
+ 348   2                      LCDGotoXY(6,4);
+ 349   2                      LCDPutChar((FreeRecords/10)+0x30);
+ 350   2                      LCDPutChar((FreeRecords%10)+0x30);
+ 351   2              }
+ 352   1              else
+ 353   1                      LCDWriteLine(4,"                    ",2);
+ 354   1              MMI_screen = TBT_MMI_RECORD_INFO;
+ 355   1      }
+ 356          
+ 357          
+ 358          void TestConfigurations()
+ 359          {
+ 360   1              GetActiveBatteries();  //need to check the bat info
+ 361   1              LCDWriteLine(2,"                    ",2);
+ 362   1              LCDWriteLine(3,"                    ",2);
+ 363   1              LCDWriteLine(4,"                    ",2);
+ 364   1              LCDGotoXY(1,3);
+ 365   1              LCDPutChar('1');
+C51 COMPILER V7.05   LCD                                                                   10/15/2019 17:32:08 PAGE 7   
+
+ 366   1              LCDPutChar('.');
+ 367   1              LCDPutText(ActiveBat1Info);
+ 368   1              LCDGotoXY(1,4);
+ 369   1              LCDPutChar('2');
+ 370   1              LCDPutChar('.');
+ 371   1              LCDPutText(ActiveBat2Info);
+ 372   1              MMI_screen = TBT_MMI_TEST_CONFIGURATION;
+ 373   1      }
+ 374          
+ 375          
+ 376          void Settings()
+ 377          {
+ 378   1              LCDWriteLine(1," TEST CONFIGURATION ",2);
+ 379   1              LCDWriteLine(2,"1.SET DATE & TIME   ",2);
+ 380   1              LCDWriteLine(3,"2.RELAY SETTINGS    ",2);
+ 381   1              LCDWriteLine(4,"3.SECTION SETTINGS  ",2);
+ 382   1              MMI_screen = SETTINGS;
+ 383   1      }
+ 384          void DateAndTimeScreen()
+ 385          {
+ 386   1              unsigned char len=0;
+ 387   1              GetTime_Date(&stTime);
+ 388   1      
+ 389   1              LCDWriteLine(2,"                    ",2);
+ 390   1              LCDWriteLine(3,"DATE:00-00-0000     ",2);
+ 391   1              LCDWriteLine(4,"TIME:00:00:00       ",2);
+ 392   1              LCDGotoXY(6,3);
+ 393   1      //      sprintf(KeyBuffer+len,"%02x-%02x-%04x",stTime.Date,stTime.Month,stTime.Year+0x2000);
+ 394   1              len=sprintf(KeyBuffer+len,"%02x-",(unsigned int)stTime.Date);
+ 395   1              len+=sprintf(KeyBuffer+len,"%02x",(unsigned int)stTime.Month);
+ 396   1              len +=sprintf(KeyBuffer+len,"-%04x",(unsigned int)stTime.Year+0x2000);
+ 397   1              LCDPutChar((stTime.Date/16)+'0');
+ 398   1              LCDPutChar((stTime.Date%16)+'0');
+ 399   1              LCDPutChar('-');
+ 400   1              LCDPutChar((stTime.Month/16)+'0');
+ 401   1              LCDPutChar((stTime.Month%16)+'0');
+ 402   1              LCDPutChar('-');
+ 403   1              LCDPutChar('2');
+ 404   1              LCDPutChar('0');
+ 405   1              LCDPutChar((stTime.Year/16)+'0');
+ 406   1              LCDPutChar((stTime.Year%16)+'0');
+ 407   1              LCDWriteLine(4,"TIME:              ",2);
+ 408   1              LCDGotoXY(6,4);
+ 409   1              stTime.Hours &=0x3f;
+ 410   1              LCDPutChar((stTime.Hours/16)+'0');
+ 411   1              LCDPutChar((stTime.Hours%16)+'0');
+ 412   1              LCDPutChar(':');
+ 413   1              LCDPutChar((stTime.Minutes/16)+'0');
+ 414   1              LCDPutChar((stTime.Minutes%16)+'0');
+ 415   1              LCDPutChar(':');
+ 416   1              LCDPutChar((stTime.Seconds/16)+'0');
+ 417   1              LCDPutChar((stTime.Seconds%16)+'0');
+ 418   1              LCDGotoXY(6,3);
+ 419   1              LCDInstWrite(LCD_BLINKING_ON);
+ 420   1              KeyIndex =0;
+ 421   1      
+ 422   1              TestType = TIME_SETTINGS;
+ 423   1      
+ 424   1              MMI_screen = TBT_MMI_DATE_TIME_SETTINGS;
+ 425   1      
+ 426   1      }
+ 427          
+C51 COMPILER V7.05   LCD                                                                   10/15/2019 17:32:08 PAGE 8   
+
+ 428          
+ 429          
+ 430          
+ 431          void BatterySerailNumber()
+ 432          {
+ 433   1              LCDWriteLine(2,"                    ",2);
+ 434   1              LCDWriteLine(3,"BAT.S.NO:00000000000",2);
+ 435   1              LCDWriteLine(4,"                    ",2);
+ 436   1              LCDGotoXY(10,3);
+ 437   1              LCDInstWrite(LCD_BLINKING_ON);
+ 438   1              strcpy(KeyBuffer,"00000000000");
+ 439   1              KeyIndex =0;
+ 440   1              TestType = BATTERY_SERIAL;
+ 441   1              MMI_screen = TBT_MMI_BATTERY_NUMERIC_KEY;
+ 442   1      }
+ 443          
+ 444          
+ 445          void RelaySelections()
+ 446          {
+ 447   1              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 448   1              LCDWriteLine(3,"1.PR-     3.K2-     ",2);
+ 449   1              LCDWriteLine(4,"2.K1-     4.K3-     ",2);
+ 450   1      //      LCDWriteLine(2,"                    ",2);
+ 451   1              LCDGotoXY(6,3);
+ 452   1              if(ReadRelayValues.PRCount == 0)
+ 453   1                      LCDPutChar(' ');
+ 454   1              else 
+ 455   1                      LCDPutChar('X');
+ 456   1              LCDGotoXY(16,3);
+ 457   1              if(ReadRelayValues.K2StartTime == 0 && ReadRelayValues.K2StopTime == 0)
+ 458   1                      LCDPutChar(' ');
+ 459   1              else
+ 460   1                      LCDPutChar('X');
+ 461   1      
+ 462   1              LCDGotoXY(6,4);
+ 463   1              if(ReadRelayValues.K1StartTime == 0 && ReadRelayValues.K1StopTime == 0)
+ 464   1                      LCDPutChar(' ');
+ 465   1              else
+ 466   1                      LCDPutChar('X');
+ 467   1      
+ 468   1              LCDGotoXY(16,4);
+ 469   1              if(ReadRelayValues.K3StartTime == 0 && ReadRelayValues.K3StopTime == 0)
+ 470   1                      LCDPutChar(' ');
+ 471   1              else
+ 472   1                      LCDPutChar('X');
+ 473   1      
+ 474   1              KeyIndex =0; 
+ 475   1              MMI_screen = TBT_MMI_RELAY_SELECTION_KEYS;
+ 476   1      }
+ 477          
+ 478          void NewRelayK1()
+ 479          {
+ 480   1              LCDWriteLine(1,"                    ",2);
+ 481   1      
+ 482   1              LCDWriteLine(2,"         K1         ",2);
+ 483   1              LCDWriteLine(3,"START TIME(s):      ",2);
+ 484   1              LCDWriteLine(4,"STOP  TIME(s):      ",2);
+ 485   1      
+ 486   1              
+ 487   1              sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K1StopTime/1000.));
+ 488   1              LCDGotoXY(15,4);
+ 489   1              LCDPutText(KeyBuffer);
+C51 COMPILER V7.05   LCD                                                                   10/15/2019 17:32:08 PAGE 9   
+
+ 490   1              sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K1StartTime/1000.0));
+ 491   1              LCDGotoXY(15,3);
+ 492   1              LCDPutText(KeyBuffer);
+ 493   1              LCDGotoXY(15,3);
+ 494   1              KeyIndex =0;
+ 495   1              LCDInstWrite(LCD_BLINKING_ON);
+ 496   1              TestType = K1_RELAY;
+ 497   1              MMI_screen = TBT_MMI_NEW_RELAY_KEY1;
+ 498   1      }
+ 499          
+ 500          void NewRelayK2()
+ 501          {
+ 502   1      //      unsigned char Buffer[5];
+ 503   1              LCDWriteLine(1,"                    ",2);
+ 504   1              LCDWriteLine(2,"         K2         ",2);
+ 505   1              LCDWriteLine(3,"START TIME(s):      ",2);
+ 506   1              LCDWriteLine(4,"STOP  TIME(s):      ",2);
+ 507   1      
+ 508   1              sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K2StopTime/1000.0));
+ 509   1              LCDGotoXY(15,4);
+ 510   1              LCDPutText(KeyBuffer);
+ 511   1              
+ 512   1              sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K2StartTime/1000.0));
+ 513   1              LCDGotoXY(15,3);
+ 514   1              LCDPutText(KeyBuffer);
+ 515   1              
+ 516   1              LCDGotoXY(15,3);
+ 517   1              KeyIndex =0;
+ 518   1              LCDInstWrite(LCD_BLINKING_ON);
+ 519   1              TestType = K2_RELAY;
+ 520   1              MMI_screen = TBT_MMI_NEW_RELAY_KEY1_K2;
+ 521   1      
+ 522   1      }
+ 523          
+ 524          void NewRelayK3()
+ 525          {
+ 526   1              LCDWriteLine(1,"                    ",2);
+ 527   1              LCDWriteLine(2,"         K3         ",2);
+ 528   1              LCDWriteLine(3,"START TIME(s):      ",2);
+ 529   1              LCDWriteLine(4,"STOP  TIME(s):      ",2);
+ 530   1              sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K3StopTime/1000.0));
+ 531   1              LCDGotoXY(15,4);
+ 532   1              LCDPutText(KeyBuffer);
+ 533   1              sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K3StartTime/1000.0));
+ 534   1              LCDGotoXY(15,3);
+ 535   1              LCDPutText(KeyBuffer);
+ 536   1              LCDGotoXY(15,3);
+ 537   1              KeyIndex =0;
+ 538   1              LCDInstWrite(LCD_BLINKING_ON);
+ 539   1              TestType = K3_RELAY;
+ 540   1              MMI_screen = TBT_MMI_NEW_RELAY_KEY1_K3;
+ 541   1      }
+ 542          
+ 543          void IntervalDuration()
+ 544          {
+ 545   1              LCDWriteLine(1,"                    ",2);
+ 546   1              LCDGotoXY(12,1);
+ 547   1              LCDPutText("PR");
+ 548   1              LCDWriteLine(2,"START(s):           ",2);
+ 549   1              LCDWriteLine(3,"DUR(m) :    COUNT:  ",2);
+ 550   1              LCDWriteLine(4,"INTERVAL(s):        ",2);
+ 551   1      
+C51 COMPILER V7.05   LCD                                                                   10/15/2019 17:32:08 PAGE 10  
+
+ 552   1              sprintf(KeyBuffer,"%03ld",(ReadRelayValues.PRDuration)); //Modified from 1.1 float to 3 long decimals
+ 553   1              LCDGotoXY(9,3);
+ 554   1              LCDPutText(KeyBuffer);
+ 555   1              sprintf(KeyBuffer,"%02d",ReadRelayValues.PRCount);
+ 556   1              LCDGotoXY(19,3);
+ 557   1              LCDPutText(KeyBuffer);
+ 558   1              sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.Interval/1000.0));
+ 559   1              LCDGotoXY(13,4);
+ 560   1              LCDPutText(KeyBuffer);
+ 561   1              sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.PRStart/1000.0));
+ 562   1              LCDGotoXY(10,2);
+ 563   1              LCDPutText(KeyBuffer);
+ 564   1              LCDGotoXY(10,2);
+ 565   1              KeyIndex =0;
+ 566   1              LCDInstWrite(LCD_BLINKING_ON);
+ 567   1              TestType = START_DURATION;
+ 568   1              MMI_screen = TBT_MMI_NEW_RELAY_KEY1_PR;
+ 569   1      }
+ 570          
+ 571          
+ 572          void IgniterSettings()
+ 573          {
+ 574   1              LCDWriteLine(1,"                    ",2);
+ 575   1              LCDWriteLine(2,"                    ",2);
+ 576   1              LCDWriteLine(3,"IGN. DURATION:    ms",2);
+ 577   1              LCDWriteLine(4,"TEST DURATION:    s ",2);
+ 578   1              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 579   1              sprintf(KeyBuffer,"%03ld",ReadRelayValues.Testduration);
+ 580   1              LCDGotoXY(15,4);
+ 581   1              LCDPutText(KeyBuffer);
+ 582   1      
+ 583   1              sprintf(KeyBuffer,"%03d",ReadRelayValues.IgnitionDuration);
+ 584   1              LCDGotoXY(15,3);
+ 585   1              LCDPutText(KeyBuffer);
+ 586   1      
+ 587   1              LCDGotoXY(15,3);
+ 588   1              TestType =IGN_DURATION;
+ 589   1              KeyIndex  =0;
+ 590   1              LCDInstWrite(LCD_BLINKING_ON);
+ 591   1              MMI_screen = TBT_MMI_IGNITE_KEY;
+ 592   1      }
+ 593          
+ 594          
+ 595          
+ 596          
+ 597          void ConnectBatteryTerminals()
+ 598          {
+ 599   1              LCDInstWrite(LCD_BLINKING_OFF);
+ 600   1              LCDWriteLine(2,"                    ",2);
+ 601   1              LCDWriteLine(3,"      CONNECT       ",2);
+ 602   1              LCDWriteLine(4,"  BATTERY TERMINALS ",2);
+ 603   1              MMI_screen      =TBT_MMI_CONNECT_BATTERY;
+ 604   1      }
+ 605          
+ 606          
+ 607          void TestCompleted()
+ 608          {
+ 609   1              LCDWriteLine(3,"   TEST COMPLETED   ",2);
+ 610   1              LCDWriteLine(2,"                    ",2);
+ 611   1              LCDWriteLine(4,"PRESS * FOR MAINMENU",2);
+ 612   1              MMI_screen      =TBT_MMI_TEST_COMPLETED;
+ 613   1      }
+C51 COMPILER V7.05   LCD                                                                   10/15/2019 17:32:08 PAGE 11  
+
+ 614          
+ 615          void TestProcessing()
+ 616          {
+ 617   1              
+ 618   1              
+ 619   1              FileName =ReadDirectory();
+ 620   1              if(FileName == -1)
+ 621   1              {
+ 622   2              LCDWriteLine(2,"NO RECORDS AVAILABLE",2);
+ 623   2                      LCDWriteLine(3,"PRESS * TO MAIN MENU",2);
+ 624   2                      LCDWriteLine(4,"                    ",2);
+ 625   2                      PutStringOnRS232(NACK); //nack
+ 626   2                      MMI_screen      =TBT_MMI_TEST_STATUS;
+ 627   2              }
+ 628   1              else 
+ 629   1              {
+ 630   2                      LCDWriteLine(2,"                    ",2);
+ 631   2                      LCDWriteLine(3,"PRESS IGNITER BUTTON",2);
+ 632   2                      LCDWriteLine(4,"                    ",2);
+ 633   2      
+ 634   2                      WriteFiletoFlash(TotalRecords,FileName);
+ 635   2                      TestCompleted();
+ 636   2              }
+ 637   1      }
+ 638          
+ 639          void ResetToAbort()
+ 640          {
+ 641   1              MMI_screen      =TBT_MMI_TEST_PROCESSING;
+ 642   1              LCDWriteLine(2,"                    ",2);
+ 643   1              LCDWriteLine(3," PRESS * TO CONTINUE",2);
+ 644   1              LCDWriteLine(4,"   # TO ABORT       ",2);
+ 645   1              MMI_screen      =TBT_MMI_TEST_PROCESSING;
+ 646   1      
+ 647   1      }
+ 648          
+ 649          void ConnectLoads()
+ 650          {
+ 651   1              LCDWriteLine(2,"                    ",2);
+ 652   1              LCDWriteLine(3,"   CONNECT LOADS    ",2);
+ 653   1              LCDWriteLine(4,"                    ",2);
+ 654   1              MMI_screen      =TBT_MMI_CONNECT_LOAD;
+ 655   1      }
+ 656          
+ 657          void TestCondition_50p()
+ 658          {
+ 659   1              LCDWriteLine(1,"4.HT                ",2);
+ 660   1              LCDWriteLine(2,"5.HT.vibr.(sin)     ",2);
+ 661   1              LCDWriteLine(3,"6.HT.Accl.          ",2);
+ 662   1              LCDWriteLine(4,"7.HT.Axil.Accl.     ",2);
+ 663   1              LCDGotoXY(1,1);
+ 664   1              LCDInstWrite(LCD_BLINKING_ON);
+ 665   1              MMI_screen      =TBT_MMI_CONDITION_50_1;
+ 666   1      }
+ 667          
+ 668          void TestCondition_50n()
+ 669          {
+ 670   1              LCDWriteLine(1,"1.LT                ",2);
+ 671   1              LCDWriteLine(2,"2.LT.vibr.(sin)     ",2);
+ 672   1              LCDWriteLine(3,"3.LT.Accl.          ",2);
+ 673   1              LCDWriteLine(4,"                    ",2);
+ 674   1              LCDGotoXY(1,1);
+ 675   1              LCDInstWrite(LCD_BLINKING_ON);
+C51 COMPILER V7.05   LCD                                                                   10/15/2019 17:32:08 PAGE 12  
+
+ 676   1              MMI_screen      =TBT_MMI_CONDITION_50_2;
+ 677   1      }
+ 678          
+ 679          void TestCondition_30n()
+ 680          {
+ 681   1              LCDWriteLine(1,"13.LT               ",2);
+ 682   1              LCDWriteLine(2,"14.LT.vibr.(Random) ",2);
+ 683   1              LCDWriteLine(3,"15.LT.Accl.(Lateral)",2);
+ 684   1              LCDWriteLine(4,"16.LT.Accl.(Long)   ",2);
+ 685   1              LCDGotoXY(1,1);
+ 686   1              LCDInstWrite(LCD_BLINKING_ON);
+ 687   1              MMI_screen      =TBT_MMI_CONDITION_50_3;
+ 688   1      }
+ 689          void TestCondition_55p()
+ 690          {
+ 691   1              LCDWriteLine(1,"17.HT               ",2);
+ 692   1              LCDWriteLine(2,"18.HT.vibr.(Random) ",2);
+ 693   1              LCDWriteLine(3,"19.HT.Accl.(Lateral)",2);
+ 694   1              LCDWriteLine(4,"20.HT.Accl.(Long)   ",2);
+ 695   1              LCDGotoXY(1,1);
+ 696   1              LCDInstWrite(LCD_BLINKING_ON);
+ 697   1              MMI_screen      =TBT_MMI_CONDITION_50_4;
+ 698   1      }
+ 699          void TestCondition_Room_Temp()
+ 700          {
+ 701   1              LCDWriteLine(1,"8.Incr Humidity     ",2);
+ 702   1              LCDWriteLine(2,"9.High Altitude     ",2);
+ 703   1              LCDWriteLine(3,"10.800g impact      ",2);
+ 704   1              LCDWriteLine(4,"11.H&F D.Con  12.RT ",2);
+ 705   1              LCDGotoXY(1,1);
+ 706   1              LCDInstWrite(LCD_BLINKING_ON);
+ 707   1              MMI_screen      =TBT_MMI_CONDITION_50_5;
+ 708   1      }
+ 709          
+ 710          void TestConditoion_Menu()
+ 711          {
+ 712   1              LCDWriteLine(2,"TEST CONDITION MENU ",2);
+ 713   1              LCDWriteLine(3,"1.+50  2.-50  3.-30 ",2);
+ 714   1              LCDWriteLine(4,"4.+55  5.Others     ",2);
+ 715   1              MMI_screen      =TBT_MMI_CONDITION_MENU;
+ 716   1      }
+ 717                  
+ 718          /*              
+ 719          void SectionSettings()
+ 720          {
+ 721                  LCDWriteLine(2,"1.SECTION1 --       ",2);
+ 722                  LCDWriteLine(3,"2.SECTION2 --       ",2);
+ 723                  LCDWriteLine(4,"3.SECTION3 --       ",2);
+ 724                  MMI_screen      =TBT_MMI_SECTION_SETTINGS;
+ 725          }
+ 726          
+ 727          */
+ 728          void SectionSettings()
+ 729          {
+ 730   1              LCDWriteLine(1,"                    ",2);
+ 731   1              LCDWriteLine(2," SECTION'S SETTINGS ",2);
+ 732   1              LCDWriteLine(3,"FIRST SECT :        ",2);
+ 733   1              LCDWriteLine(4,"SECOND SECT:        ",2);
+ 734   1              FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+ 735   1              sprintf(KeyBuffer,"%02d",((unsigned int)ReadRelayValues.SecondSection));
+ 736   1              LCDGotoXY(14,4);
+ 737   1              LCDPutText(KeyBuffer);
+C51 COMPILER V7.05   LCD                                                                   10/15/2019 17:32:08 PAGE 13  
+
+ 738   1      
+ 739   1              sprintf(KeyBuffer,"%02d",(unsigned int)ReadRelayValues.FirstSection);
+ 740   1              LCDGotoXY(14,3);
+ 741   1              LCDPutText(KeyBuffer);
+ 742   1      
+ 743   1              LCDGotoXY(14,3);
+ 744   1              LCDInstWrite(LCD_BLINKING_ON);
+ 745   1              KeyIndex =0;
+ 746   1              TestType = TBT_MMI_SECTION1_SETTINGS;
+ 747   1              MMI_screen      =TBT_MMI_SECTION_SETTINGS;
+ 748   1      }
+ 749          
+ 750          
+ 751          
+ 752          
+ 753          
+ 754          
+ 755          
+ 756          
+ 757          
+ 758          
+ 759          
+ 760          
+ 761          
+ 762          
+ 763                  
+ 764                  
+ 765          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   3276    ----
+   CONSTANT SIZE    =   1443    ----
+   XDATA SIZE       =     17    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      1      22
+   IDATA SIZE       =      3    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

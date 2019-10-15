@@ -1,0 +1,244 @@
+C51 COMPILER V7.05   FLASH_INTERNAL                                                        10/15/2019 17:32:08 PAGE 1   
+
+
+C51 COMPILER V7.05, COMPILATION OF MODULE FLASH_INTERNAL
+OBJECT MODULE PLACED IN Flash_internal.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE Flash_internal.c DB OE BR INCDIR(C:\SiLabs\MCU\Inc)
+
+stmt level    source
+
+   1          //#include <c8051f120.h>
+   2          /*
+   3          File Name :Flash_internal.c
+   4          Description : Internla Flash Read,Write and Erase Routines
+   5          */
+   6          #include <functions.h>
+   7          
+   8          //-----------------------------------------------------------------------------
+   9          // Type Definitions
+  10          //-----------------------------------------------------------------------------
+  11          typedef union ULong 
+  12          {                                                                                               // Byte addressable unsigned long
+  13                  unsigned long ULong;
+  14                  unsigned int Int[2];
+  15                  unsigned char Char[4];
+  16          } ULong;
+  17          
+  18          
+  19          #define FLASH_PAGESIZE 1024                                     // Number of bytes in each FLASH page
+  20          
+  21          #define COBANK  0xF0                                                    // Bit mask for the high nibble of PSBANK
+  22          #define COBANK0 0x00                                                    // These macros define the bit mask values
+  23          #define COBANK1 0x10                                                    // for the PSBANK register used for
+  24          #define COBANK2 0x20                                                    // selecting COBANK. COBANK should always
+  25          #define COBANK3 0x30                                                    // be cleared then OR-Equaled (|=) with
+  26          
+  27          
+  28          //-----------------------------------------------------------------------------
+  29          // FLASH_PageErase
+  30          //-----------------------------------------------------------------------------
+  31          //
+  32          // This function erases the FLASH page containing <addr>.
+  33          //
+  34          
+  35          void FLASH_PageErase (unsigned long addr)
+  36          {
+  37   1              char SFRPAGE_SAVE = SFRPAGE;                            // Preserve current SFR page
+  38   1              char PSBANK_SAVE = PSBANK;                                      // Preserve current code bank
+  39   1              bit EA_SAVE = EA;                                                       // Preserve interrupt state
+  40   1              ULong temp_addr;                                                        // Temporary ULong
+  41   1              char xdata * idata pwrite;                                      // FLASH write/erase pointer
+  42   1              temp_addr.ULong = addr;                                         // copy <addr> to a byte addressable
+  43   1      
+  44   1      // Extract address information from <addr>
+  45   1              pwrite = (char xdata *) temp_addr.Int[1];
+  46   1      // Extract code bank information from <addr>
+  47   1              PSBANK &= ~COBANK;                                                      // Clear the COBANK bits
+  48   1      
+  49   1              if( temp_addr.Char[1] == 0x00)
+  50   1              {                                                                                       // If the address is less than
+  51   2                                                                                                      // 0x10000, the Common area and
+  52   2                      PSBANK |= COBANK1;                                              // Bank1 provide a 64KB linear
+  53   2                                                                                                      // address space
+  54   2              } 
+  55   1              else 
+C51 COMPILER V7.05   FLASH_INTERNAL                                                        10/15/2019 17:32:08 PAGE 2   
+
+  56   1              {                                                                                       // Else, Bank2 and Bank3 provide
+  57   2                                                                                                      // a 64KB linear address space
+  58   2                      if (temp_addr.Char[2] & 0x80)
+  59   2                      {                                                                               // If bit 15 of the address is
+  60   3                                                                                                      // a '1’, then the operation should
+  61   3                              PSBANK |= COBANK3;                                      // target Bank3, else target Bank2
+  62   3                      } 
+  63   2                      else 
+  64   2                      {
+  65   3                              PSBANK |= COBANK2;
+  66   3                              temp_addr.Char[2] |= 0x80;
+  67   3                              pwrite = (char xdata *) temp_addr.Int[1];
+  68   3                      }
+  69   2              }
+  70   1              SFRPAGE = LEGACY_PAGE;
+  71   1              EA = 0;                                                                         // Disable interrupts
+  72   1              FLSCL |= 0x01;                                                          // Enable FLASH writes/erases
+  73   1              PSCTL = 0x03;                                                           // MOVX erases FLASH page
+  74   1              *pwrite = 0;                                                            // Initiate FLASH page erase
+  75   1              FLSCL &= ~0x01;                                                         // Disable FLASH writes/erases
+  76   1              PSCTL = 0x00;                                                           // MOVX targets XRAM
+  77   1              EA = EA_SAVE;                                                           // Restore interrupt state
+  78   1              PSBANK = PSBANK_SAVE;                                           // Restore current code bank
+  79   1              SFRPAGE = SFRPAGE_SAVE;                                         // Restore SFR page
+  80   1      }
+  81          
+  82          //-----------------------------------------------------------------------------
+  83          // FLASH_Write
+  84          //-----------------------------------------------------------------------------
+  85          //
+  86          // This routine copies <numbytes> from <src> to the FLASH addressed by <dest>.
+  87          //
+  88          void FLASH_Write (unsigned long dest, char* src, unsigned int numbytes)
+  89          {
+  90   1              unsigned int i;                                                         // Software Counter
+  91   1              for (i = 0; i < numbytes; i++) 
+  92   1              {
+  93   2                      FLASH_ByteWrite( dest++, *src++);
+  94   2              }
+  95   1      }
+  96          //-----------------------------------------------------------------------------
+  97          // FLASH_ByteWrite
+  98          //-----------------------------------------------------------------------------
+  99          //
+ 100          // This routine writes <dat> to the FLASH byte addressed by <dest>.
+ 101          //
+ 102          void FLASH_ByteWrite (unsigned long dest, char dat)
+ 103          {
+ 104   1              char SFRPAGE_SAVE = SFRPAGE;                            // Preserve current SFR page
+ 105   1              char PSBANK_SAVE = PSBANK;                                      // Preserve current code bank
+ 106   1              bit EA_SAVE = EA;                                                       // Preserve interrupt state
+ 107   1              ULong temp_dest;                                                        // Temporary ULong
+ 108   1              char xdata * idata pwrite;                                      // FLASH write/erase pointer
+ 109   1              temp_dest.ULong = dest;                                         // copy <dest> to a byte
+ 110   1                                                              // addressable unsigned long
+ 111   1                                                              // Check if data byte being written is 0xFF
+ 112   1                                                              // There is no need to write 0xFF to FLASH since erased
+ 113   1                                                              // FLASH defaults to 0xFF.
+ 114   1                                                              // Extract address information from <dest>
+ 115   1              pwrite = (char xdata *) temp_dest.Int[1];
+ 116   1              // Extract code bank information from <addr>
+ 117   1              PSBANK &= ~COBANK;                                                      // Clear the COBANK bits
+C51 COMPILER V7.05   FLASH_INTERNAL                                                        10/15/2019 17:32:08 PAGE 3   
+
+ 118   1              if( temp_dest.Char[1] == 0x00)
+ 119   1              {                                                                                       // If the address is less than
+ 120   2                                                                                                      // 0x10000, the Common area and
+ 121   2                      PSBANK |= COBANK1;                                              // Bank1 provide a 64KB linear
+ 122   2                                                                                                      // address space
+ 123   2              } 
+ 124   1              else 
+ 125   1              { 
+ 126   2                                              // Else, Bank2 and Bank3 provide
+ 127   2                                              // a 64KB linear address space
+ 128   2                      if (temp_dest.Char[2] & 0x80)
+ 129   2                      {                       // If bit 15 of the address is
+ 130   3                                              // a '1’, then the operation should
+ 131   3                              PSBANK |= COBANK3; // target Bank3, else target Bank2
+ 132   3                      } 
+ 133   2                      else 
+ 134   2                      {
+ 135   3                              PSBANK |= COBANK2;
+ 136   3                              temp_dest.Char[2] |= 0x80;
+ 137   3                              pwrite = (char xdata *) temp_dest.Int[1];
+ 138   3                      }
+ 139   2              }
+ 140   1              SFRPAGE = LEGACY_PAGE;
+ 141   1              EA = 0;                                                                         // Disable interrupts
+ 142   1              FLSCL |= 0x01;                                                          // Enable FLASH writes/erases
+ 143   1              PSCTL = 0x01;                                                           // MOVX writes FLASH byte
+ 144   1              *pwrite = dat;                                                          // Write FLASH byte
+ 145   1              FLSCL &= ~0x01;                                                         // Disable FLASH writes/erases
+ 146   1              PSCTL = 0x00;                                                           // MOVX targets XRAM
+ 147   1              
+ 148   1              EA = EA_SAVE;                                                           // Restore interrupt state
+ 149   1              PSBANK = PSBANK_SAVE;                                           // Restore current code bank
+ 150   1              SFRPAGE = SFRPAGE_SAVE;                                         // Restore SFR page
+ 151   1      }
+ 152          //-----------------------------------------------------------------------------
+ 153          // FLASH_Read
+ 154          //-----------------------------------------------------------------------------
+ 155          //
+ 156          // This routine copies <numbytes> from FLASH addressed by <src> to <dest>.
+ 157          //
+ 158          //void FLASH_Read ( char* dest, unsigned long src, unsigned int numbytes)
+ 159          void FLASH_Read ( unsigned long src, char* dest, unsigned int numbytes)
+ 160          {
+ 161   1              unsigned int i;                                                         // Software Counter
+ 162   1              for (i = 0; i < numbytes; i++) 
+ 163   1              {
+ 164   2                      *dest++ = FLASH_ByteRead(src++);
+ 165   2              }
+ 166   1      }
+ 167          //-----------------------------------------------------------------------------
+ 168          // FLASH_ByteRead
+ 169          //-----------------------------------------------------------------------------
+ 170          //
+ 171          // This routine returns to the value of the FLASH byte addressed by <addr>.
+ 172          //
+ 173          
+ 174          unsigned char FLASH_ByteRead (unsigned long addr)
+ 175          {
+ 176   1              char SFRPAGE_SAVE = SFRPAGE;                            // Preserve current SFR page
+ 177   1              char PSBANK_SAVE = PSBANK;                                      // Preserve current code bank
+ 178   1              ULong temp_addr;                                                        // Temporary ULong
+ 179   1              char temp_char;                                                         // Temporary char
+C51 COMPILER V7.05   FLASH_INTERNAL                                                        10/15/2019 17:32:08 PAGE 4   
+
+ 180   1              char code * idata pread;                                        // FLASH read pointer
+ 181   1              temp_addr.ULong = addr;                                         // copy <addr> to a byte addressable
+ 182   1              // unsigned long
+ 183   1              // Extract address information from <addr>
+ 184   1              pread = (char code *) temp_addr.Int[1];
+ 185   1              // Extract code bank information from <addr>
+ 186   1              PSBANK &= ~COBANK; // Clear the COBANK bits
+ 187   1              if( temp_addr.Char[1] == 0x00)
+ 188   1              {                       // If the address is less than
+ 189   2                                      // 0x10000, the Common area and
+ 190   2                      PSBANK |= COBANK1; // Bank1 provide a 64KB linear
+ 191   2                                      // address space
+ 192   2              } 
+ 193   1              else 
+ 194   1              {                       // Else, Bank2 and Bank3 provide
+ 195   2                                      // a 64KB linear address space
+ 196   2                      if (temp_addr.Char[2] & 0x80)
+ 197   2                      {               // If bit 15 of the address is
+ 198   3                                      // a '1’, then the operation should
+ 199   3                              PSBANK |= COBANK3; // target Bank3, else target Bank2
+ 200   3                      } 
+ 201   2                      else 
+ 202   2                      {
+ 203   3                              PSBANK |= COBANK2;
+ 204   3                              temp_addr.Char[2] |= 0x80;
+ 205   3                              pread = (char code *) temp_addr.Int[1];
+ 206   3                      }
+ 207   2              }
+ 208   1              temp_char = *pread;                                             // Read FLASH byte
+ 209   1              PSBANK = PSBANK_SAVE;                                           // Restore current code bank
+ 210   1              SFRPAGE = SFRPAGE_SAVE;                                         // Restore SFR page
+ 211   1              return temp_char;
+ 212   1      }
+ 213          
+ 214          
+ 215                  
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    423    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      39
+   IDATA SIZE       =   ----       6
+   BIT SIZE         =   ----       2
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

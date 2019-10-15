@@ -1,0 +1,240 @@
+C51 COMPILER V7.05   CROSSBAR                                                              10/15/2019 17:32:09 PAGE 1   
+
+
+C51 COMPILER V7.05, COMPILATION OF MODULE CROSSBAR
+OBJECT MODULE PLACED IN crossbar.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE crossbar.c DB OE BR INCDIR(C:\SiLabs\MCU\Inc)
+
+stmt level    source
+
+   1          /*==============================================================================================*/
+   2          /* RIGHTS      : Acorn Embedded Systems India (Pvt) Ltd.
+   3                                         www.acornindia.com       
+   4          /* Description:Intilaze controlelr pheriperals                                                    */
+   5          /* Developed by: Nagarjuna Reddy.G,
+   6                                           nagarjuna@sorokasoft.com
+   7          /* HISTORY     : V1.00    AA    10-DEC-2005
+   8          /*================================================================================================= */
+   9          
+  10          #include <functions.h>
+  11          #include "Record.h"
+  12          
+  13          #ifdef EXTERNAL_CLK
+  14                  #define ONE_MILII_SEC_MSB  0xF8 //0xF8 for 24mhz clock
+  15                  #define ONE_MILLI_SEC_LSB  0xCD //0x30
+  16          #else
+                      #define ONE_MILII_SEC_MSB  0xE3 
+                      #define ONE_MILLI_SEC_LSB  0x31 
+              #endif
+  20          
+  21          volatile unsigned long ullTimeInMilliseconds=0;
+  22          extern volatile unsigned long idata TestDuration;
+  23          volatile bit OneMilliSecBit=0;
+  24          volatile bit IgniterFlag =0;
+  25          
+  26          extern struct Relay xdata ReadRelayValues;
+  27          
+  28          void SYSCLKInit(void)
+  29          {
+  30   1      #ifdef EXTERNAL_CLK
+  31   1          int i = 0;
+  32   1          SFRPAGE   = CONFIG_PAGE;
+  33   1          OSCXCN    = 0x67;
+  34   1          for (i = 0; i < 3000; i++);  // Wait 1ms for initialization
+  35   1          while ((OSCXCN & 0x80) == 0);
+  36   1          CLKSEL    = 0x01;
+  37   1              OSCICN = 0x00;                                  // Disable the internal osc.
+  38   1      #else  //external clock *4=8847360
+                  int i = 0;
+                  SFRPAGE   = CONFIG_PAGE;
+                  OSCXCN    = 0x67;
+                  for (i = 0; i < 3000; i++);  // Wait 1ms for initialization
+                  while ((OSCXCN & 0x80) == 0);
+                  PLL0CN    = 0x04;
+                  CCH0CN    &= ~0x20;
+                  SFRPAGE   = LEGACY_PAGE;
+                  FLSCL     = 0xB0;
+                  SFRPAGE   = CONFIG_PAGE;
+                  CCH0CN    |= 0x20;
+                  PLL0CN    |= 0x01;
+                  PLL0DIV   = 0x01;
+                  PLL0FLT   = 0x01;
+                  PLL0MUL   = 0x04;
+                  for (i = 0; i < 15; i++);  // Wait 5us for initialization
+                  PLL0CN    |= 0x02;
+C51 COMPILER V7.05   CROSSBAR                                                              10/15/2019 17:32:09 PAGE 2   
+
+                  while ((PLL0CN & 0x10) == 0);
+                  CLKSEL    = 0x02;
+                  OSCICN    = 0x00;
+              #endif
+  60   1      
+  61   1      
+  62   1      }
+  63          
+  64          
+  65          void PortIOInit()
+  66          {
+  67   1          // P0.0  -  TX0 (UART0), Push-Pull,  Digital
+  68   1          // P0.1  -  RX0 (UART0), Open-Drain, Digital
+  69   1          // P0.2  -  SCK  (SPI0), Push-Pull,  Digital
+  70   1          // P0.3  -  MISO (SPI0), Open-Drain, Digital
+  71   1          // P0.4  -  MOSI (SPI0), Push-Pull,  Digital
+  72   1          // P0.5  -  NSS  (SPI0), Push-Pull,  Digital
+  73   1          // P0.6  -  SDA (SMBus), Open-Drain, Digital
+  74   1          // P0.7  -  SCL (SMBus), Open-Drain, Digital
+  75   1      
+  76   1          // P1.0  -  TX1 (UART1), Push-Pull,  Digital
+  77   1          // P1.1  -  RX1 (UART1), Open-Drain, Digital
+  78   1      
+  79   1          SFRPAGE   = CONFIG_PAGE;
+  80   1          P0MDOUT   = 0x35;
+  81   1          P1MDOUT   = 0x01;
+  82   1              P2MDOUT   = 0xFF;
+  83   1              P1MDOUT  |= 0xF0;
+  84   1              P4MDOUT   = 0xFF;               // Output configuration for P4 
+  85   1      
+  86   1          XBR0      = 0x07;
+  87   1          XBR2      = 0x44;
+  88   1              XBR1      = 0x04; //Enable Int0 interrupt pin  p1.2
+  89   1      
+  90   1      }
+  91          //when Igniter button is pressed igniter flag enabled
+  92          void ExternalInt0Isr() interrupt 0
+  93          {
+  94   1              IgniterFlag =1;
+  95   1      }
+  96          
+  97          //Disable Watch dog timer
+  98          void ConfigWatchDogTimer()
+  99          {
+ 100   1              SFRPAGE = CONFIG_PAGE;
+ 101   1              WDTCN = 0xDE;                       // disable watchdog timer
+ 102   1          WDTCN = 0xAD;
+ 103   1      }
+ 104          //system clock is 24Mhz 
+ 105          //timer4 uses system/12= 2mhz.
+ 106          //for 1msec= 1000usec/0.5usec= 65536-Value= 0xF830
+ 107          
+ 108          void Timer4neMsecInterruptInit()  //Timer4 
+ 109          {
+ 110   1              char SFRPAGE_SAVE = SFRPAGE;
+ 111   1      
+ 112   1               SFRPAGE   = TMR4_PAGE;
+ 113   1               RCAP4L    = ONE_MILLI_SEC_LSB;
+ 114   1           RCAP4H    = ONE_MILII_SEC_MSB;     //Reload value for 1 msec interrupt
+ 115   1      
+ 116   1           TMR4L     = ONE_MILLI_SEC_LSB;
+ 117   1           TMR4H     = ONE_MILII_SEC_MSB;     //Reload value for 1 msec interrupt
+C51 COMPILER V7.05   CROSSBAR                                                              10/15/2019 17:32:09 PAGE 3   
+
+ 118   1      //       TMR4CN    = 0x04;                              //run Timer4  ,auto reload mode
+ 119   1           EIE2     |= 0x04;                                  //Enable Timer4 interrupt
+ 120   1      
+ 121   1              SFRPAGE = SFRPAGE_SAVE;
+ 122   1      }
+ 123          //1 milli second interrupt service routine and check all relay settings
+ 124          void OneMilliSecISR() interrupt 16 //Timer4
+ 125          {
+ 126   1              char SFRPAGE_SAVE;
+ 127   1      static  unsigned char Count=1;
+ 128   1      static unsigned long PRTime=0;
+ 129   1      
+ 130   1      //      TMR4CN    &= ~0x04;  //Disable Timer4
+ 131   1              TF4 =0;
+ 132   1              if(ullTimeInMilliseconds <= ReadRelayValues.IgnitionDuration) //IgnitionDuration)
+ 133   1              {
+ 134   2                      SOLID_STATE_RELAY =1;   //Relay on
+ 135   2              }
+ 136   1              else
+ 137   1              {
+ 138   2                      SOLID_STATE_RELAY =0;  //Relay off
+ 139   2              }
+ 140   1              
+ 141   1              if(ullTimeInMilliseconds == ReadRelayValues.K1StartTime)
+ 142   1                              K1RELAY = 1;
+ 143   1              if(ullTimeInMilliseconds == ReadRelayValues.K1StopTime)
+ 144   1                              K1RELAY = 0;
+ 145   1              if(ReadRelayValues.PRCount)
+ 146   1              {
+ 147   2                              PRTime = ReadRelayValues.PRStart+ReadRelayValues.Interval *(Count-1);
+ 148   2                              if(ullTimeInMilliseconds == PRTime)
+ 149   2                                      PULSE_RELAY =1; //PULSE RELAY ON  
+ 150   2                              if(ullTimeInMilliseconds == PRTime+ReadRelayValues.PRDuration)
+ 151   2                              {
+ 152   3                                      PULSE_RELAY =0;  //PULSE RELAY OFF
+ 153   3                                      Count++;
+ 154   3                                      ReadRelayValues.PRCount--;
+ 155   3                              }
+ 156   2              }
+ 157   1              if(ullTimeInMilliseconds == ReadRelayValues.K2StartTime)
+ 158   1                      K2RELAY = 1;
+ 159   1              if(ullTimeInMilliseconds == ReadRelayValues.K2StopTime)
+ 160   1                      K2RELAY = 0;
+ 161   1              if(ullTimeInMilliseconds == ReadRelayValues.K3StartTime)
+ 162   1                      K3RELAY = 1;
+ 163   1              if(ullTimeInMilliseconds == ReadRelayValues.K3StopTime)
+ 164   1                      K3RELAY = 0;
+ 165   1      
+ 166   1              
+ 167   1              ullTimeInMilliseconds++;
+ 168   1              TestDuration--;
+ 169   1              if(TestDuration ==0)
+ 170   1              {
+ 171   2                      SFRPAGE_SAVE = SFRPAGE;
+ 172   2                      SFRPAGE = TMR3_PAGE;
+ 173   2                      TR3 =0;                                 //stop timer
+ 174   2                      SFRPAGE = SFRPAGE_SAVE;
+ 175   2                      SFRPAGE_SAVE = SFRPAGE;
+ 176   2                      SFRPAGE = TMR4_PAGE;
+ 177   2                      TR4    = 0;                     //run Timer4  ,auto reload mode
+ 178   2                      SFRPAGE = SFRPAGE_SAVE;
+ 179   2                      Count =1;
+C51 COMPILER V7.05   CROSSBAR                                                              10/15/2019 17:32:09 PAGE 4   
+
+ 180   2                      PRTime =0;
+ 181   2              }
+ 182   1              
+ 183   1      
+ 184   1      //Intialze the controller pheriperals
+ 185   1      }
+ 186          void CygnalInit()
+ 187          {
+ 188   1              SFRPAGE = CONFIG_PAGE;
+ 189   1              OUTPUT_LATCH_ENABLE = 0; //updated on 31.03.08  
+ 190   1              IGNITER_ENABLE  =   1;
+ 191   1              START_SWITCH    =       0;  //pull up mode
+ 192   1              READY_LED               =       0;  //open drain mode
+ 193   1              DAQ_LED             =   0;  //open drain mode
+ 194   1              SOLID_STATE_RELAY=      0; //
+ 195   1              PULSE_RELAY             =       0;      //DPDT
+ 196   1              K1RELAY                 =       0;
+ 197   1              K2RELAY                 =       0;
+ 198   1              K3RELAY                 =       0;
+ 199   1              K1RELAY                 =       0;
+ 200   1              ConfigWatchDogTimer();
+ 201   1              SYSCLKInit();
+ 202   1              
+ 203   1              Init_SPI( );
+ 204   1              PortIOInit();
+ 205   1              UART0_Init();
+ 206   1              UART1_Init();
+ 207   1              SMBInit();
+ 208   1              Timer4neMsecInterruptInit();
+ 209   1      
+ 210   1      }
+ 211                  
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    663    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      9    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      2    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

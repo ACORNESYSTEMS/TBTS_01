@@ -1,0 +1,765 @@
+#include <functions.h>
+#include "ds1307.h"
+#include "lcd.h"
+#include "Record.h"
+
+enum Screens MMI_screen;
+extern struct Relay xdata WriteRelayValues;
+extern struct Relay xdata ReadRelayValues;
+extern struct time xdata stTime;
+extern unsigned char xdata RecordsUsed;
+extern unsigned char idata FreeRecords;
+
+extern void SetTime_Date(struct time stTime);
+extern void GetTime_Date(struct time *stTime);
+
+extern unsigned char xdata ActiveBat1Info[12];
+extern unsigned char xdata ActiveBat2Info[12];
+//extern unsigned char BatType;
+
+extern unsigned char BatteryIndex;
+
+unsigned char xdata KeyBuffer[14];
+unsigned char xdata	LCD_CurrentX=1;
+unsigned char xdata	LCD_CurrentY=1;
+unsigned char idata FileName;
+unsigned char xdata TestType;
+unsigned char idata TotalRecords;
+unsigned char idata KeyIndex;
+
+
+extern void SetTime_Date(struct time stTime);
+extern void GetTime_Date(struct time *stTime);
+
+
+/****************************************************************************
+                LCD INTIALISATIONS
+*****************************************************************************/
+//lcd intialization
+
+/*
+void LcdInit()
+{
+	char SRFPAGE_SAVE = SFRPAGE;
+	SFRPAGE = CONFIG_PAGE;
+		
+	LCDInstWrite(0X30);
+	#ifdef EXTERNAL_CLK
+	delay(0x1fff);
+	delay(0x1fff);  // DELAY
+	delay(0x1fff);  // DELAY2
+#else
+	delay(0x1fff);
+	delay(0x1fff);
+	delay(0x1fff);  // DELAY2
+#endif
+	LCDInstWrite(0x30);
+#ifdef EXTERNAL_CLK
+	delay(0x1fff);
+	delay(0x1fff);  // DELAY
+	delay(0x1fff);  // DELAY2
+#else
+	delay(0x1fff);
+	delay(0x1fff);
+	delay(0x1fff);  // DELAY2
+#endif
+	LCDInstWrite(0x30);
+#ifdef EXTERNAL_CLK
+	delay(0x1fff);
+	delay(0x1fff);  // DELAY
+	delay(0x1fff);  // DELAY2
+#else
+	delay(0x1fff);
+	delay(0x1fff);
+	delay(0x1fff);  // DELAY2
+#endif
+	LCDInstWrite(0x38);
+	LCDInstWrite(0x0C);
+	LCDInstWrite(0x01);
+	LCDInstWrite(0x06);  // Auto increment cursor position
+	SFRPAGE = SRFPAGE_SAVE;
+
+}
+*/
+/***************************************************************************************************
+								LCD INSTRUCTION WRITE
+****************************************************************************************************/
+//Write command to LCD
+
+/*
+void LCDInstWrite(unsigned char instruction)
+{
+	char SRFPAGE_SAVE = SFRPAGE;
+	SFRPAGE = CONFIG_PAGE;	
+	LCD_RS = 0;
+	LCD_E  = 0;
+	LCD_RW = 0;
+	LCD_DATA = instruction;
+	LCD_E  = 1;
+#ifdef EXTERNAL_CLK
+	_nop_();
+	_nop_();
+	_nop_();
+	_nop_();
+	_nop_();
+	_nop_();
+	delay(0x2F);
+	LCD_E  = 0;
+	delay(0x2F);
+#else
+	_nop_();
+	_nop_();
+	_nop_();
+	_nop_();
+	_nop_();
+	_nop_();
+	delay(0xFF);
+	LCD_E  = 0;
+	delay(0xFF);
+#endif
+	SFRPAGE = SRFPAGE_SAVE;
+
+}
+*/
+/***************************************************************************************************
+								LCD CHARACTER DISPLAY
+****************************************************************************************************/
+//Wrtie data to LCD
+/*
+void LCDDataWrite(unsigned char character)
+{
+	char SRFPAGE_SAVE = SFRPAGE;
+	SFRPAGE = CONFIG_PAGE;	
+	LCD_RS = 0;
+	LCD_E  = 0;
+	LCD_RW = 0;
+	LCD_DATA = character;
+	LCD_E  = 1;
+	LCD_RS = 1;
+#ifdef EXTERNAL_CLK
+	delay(0x2F);
+	LCD_E  = 0;
+	delay(0x2F);
+#else
+	delay(0xFF);
+	LCD_E  = 0;
+	delay(0xFF);
+#endif
+	SFRPAGE = SRFPAGE_SAVE;
+
+}
+
+*/
+
+//Go the perticular position on LCD
+/*
+void LCDGotoXY(unsigned char X, unsigned char Y)
+{
+	
+	char SRFPAGE_SAVE = SFRPAGE;
+	SFRPAGE = CONFIG_PAGE;	
+	if(X < 1 || X > MAX_COLUMNS)
+		return;
+	switch(Y)
+	{
+	case 1:
+		LCDInstWrite(0x80+(X-1));
+		break;
+	case 2:
+		LCDInstWrite(0xC0+(X-1));
+		break;
+	case 3:
+		LCDInstWrite(0x94+(X-1));
+		break;
+	case 4:
+		LCDInstWrite(0xD4+(X-1));
+		break;
+	default:
+		return;
+	}
+	LCD_CurrentX=X;
+  	LCD_CurrentY=Y;
+	SFRPAGE = SRFPAGE_SAVE;
+
+}
+
+//Put text on LCD
+void LCDPutText(char *datastr)
+{
+	unsigned char i;
+	char SRFPAGE_SAVE = SFRPAGE;
+	SFRPAGE = CONFIG_PAGE;	
+	for(i=0; i<strlen(datastr);i++)
+	{
+   		LCD_CurrentX++;
+   		LCDDataWrite(datastr[i]);
+	}
+	SFRPAGE = SRFPAGE_SAVE;
+
+}
+
+//Put char on LCD
+void LCDPutChar(unsigned char datachar)
+{
+	char SRFPAGE_SAVE = SFRPAGE;
+	SFRPAGE = CONFIG_PAGE;	
+	LCD_CurrentX++;
+   	LCDDataWrite(datachar);
+	SFRPAGE = SRFPAGE_SAVE;
+}
+
+//Write data on lcd with specified line number and alignmnet
+void LCDWriteLine(unsigned char LineNo, char *datastr, unsigned char Alignment)
+{
+	char SRFPAGE_SAVE = SFRPAGE;
+	SFRPAGE = CONFIG_PAGE;	
+	LCDGotoXY(1,LineNo);
+
+	if (Alignment == 0) 		// Left
+	{
+		LCDPutText(datastr);
+	}
+
+	if (Alignment == 1)   // Right 
+	{
+		LCDGotoXY(20-strlen(datastr)+1,LineNo);
+		LCDPutText(datastr);
+    }
+
+	if (Alignment == 2)   // Center
+	{
+		LCDGotoXY((20-strlen(datastr))/2 +1,LineNo);
+		LCDPutText(datastr);
+	}
+	SFRPAGE = SRFPAGE_SAVE;
+
+}
+
+*/
+
+
+
+void LCDGotoXY(unsigned char X, unsigned char Y)
+{
+	unsigned char LcdBuffer[5];
+	if(X < 1 || X > MAX_COLUMNS)
+		return;
+	sprintf(LcdBuffer,"%c%c%c%c",LCDSOM,LCDCUR,X,Y);
+	LCDPutText(LcdBuffer);
+	LCD_CurrentX=X;
+  	LCD_CurrentY=Y;
+}
+
+void LCDPutText(unsigned char datastr[])
+{
+	unsigned char i;
+	for(i=0; i<strlen(datastr);i++)
+   		LCDPutChar(datastr[i]);
+}
+
+void LCDPutChar(unsigned char datachar)
+{
+	char SFRPAGE_SAVE = SFRPAGE;
+	SFRPAGE = UART1_PAGE;
+	TI1 = 0;
+	SBUF1 = datachar;
+	while(TI1 != 1);
+	TI1 = 0;
+	SFRPAGE = SFRPAGE_SAVE;
+}
+
+void LCDWriteLine(unsigned char LineNo, unsigned char *datastr, unsigned char Alignment)
+{
+
+	LCDGotoXY(1,LineNo);
+
+	if (Alignment == 0) 		// Left
+	{
+		LCDPutText(datastr);
+	}
+
+	if (Alignment == 1)   // Right 
+	{
+		LCDGotoXY(20-strlen(datastr)+1,LineNo);
+		LCDPutText(datastr);
+    }
+
+	if (Alignment == 2)   // Center
+	{
+		LCDGotoXY((20-strlen(datastr))/2 +1,LineNo);
+		LCDPutText(datastr);
+	}
+}
+
+
+void LCDInstWrite(unsigned char instruction)
+{
+	unsigned char LcdBuffer[5];
+	sprintf(LcdBuffer,"%c%c",LCDSOM,instruction);
+	LCDPutText(LcdBuffer);
+
+}
+
+
+//**********************************************************************************
+// DELAY SUBROUTINE STARTS HERE 
+//*******************************************************************************
+void delay(unsigned int  count)
+{
+	while((count--)!= 0);
+}
+
+
+
+
+
+void WelcomeScreen()
+{
+	LCDWriteLine(1,"                    ",2);
+	LCDWriteLine(2,"  THERMAL BATTERY   ",2);
+	LCDWriteLine(3,"    TEST SYSTEM     ",2);
+	LCDWriteLine(4,"ECIL      ACORN ESYS",2);
+}
+
+
+void MainMenu()
+{
+	LCDWriteLine(2,"1.RECORDS STATUS    ",2);
+	LCDWriteLine(3,"2.TEST CONFIGURATION",2);
+	LCDWriteLine(4,"3.START TEST        ",2);
+	MMI_screen =TBT_MMI_MAIN_MENU_KEYS;
+}
+
+
+void RecordsInformation()
+{
+	LCDWriteLine(2,"USED RECORDS:       ",2);
+	LCDGotoXY(14,2);
+	LCDPutChar((RecordsUsed/10)+0x30);
+	LCDPutChar((RecordsUsed%10)+0x30);
+	LCDWriteLine(3,"FREE RECORDS:       ",2);
+	LCDGotoXY(14,3);
+	LCDPutChar((FreeRecords/10)+0x30);
+	LCDPutChar((FreeRecords%10)+0x30);
+
+	if(FreeRecords <=10)
+	{
+		LCDWriteLine(4,"ONLY    RECORDS LEFT",2);
+		LCDGotoXY(6,4);
+		LCDPutChar((FreeRecords/10)+0x30);
+		LCDPutChar((FreeRecords%10)+0x30);
+	}
+	else
+		LCDWriteLine(4,"                    ",2);
+	MMI_screen = TBT_MMI_RECORD_INFO;
+}
+
+
+void TestConfigurations()
+{
+	GetActiveBatteries();  //need to check the bat info
+	LCDWriteLine(2,"                    ",2);
+	LCDWriteLine(3,"                    ",2);
+	LCDWriteLine(4,"                    ",2);
+	LCDGotoXY(1,3);
+	LCDPutChar('1');
+	LCDPutChar('.');
+	LCDPutText(ActiveBat1Info);
+	LCDGotoXY(1,4);
+	LCDPutChar('2');
+	LCDPutChar('.');
+	LCDPutText(ActiveBat2Info);
+	MMI_screen = TBT_MMI_TEST_CONFIGURATION;
+}
+
+
+void Settings()
+{
+	LCDWriteLine(1," TEST CONFIGURATION ",2);
+	LCDWriteLine(2,"1.SET DATE & TIME   ",2);
+	LCDWriteLine(3,"2.RELAY SETTINGS    ",2);
+	LCDWriteLine(4,"3.SECTION SETTINGS  ",2);
+	MMI_screen = SETTINGS;
+}
+void DateAndTimeScreen()
+{
+	unsigned char len=0;
+	GetTime_Date(&stTime);
+
+	LCDWriteLine(2,"                    ",2);
+	LCDWriteLine(3,"DATE:00-00-0000     ",2);
+	LCDWriteLine(4,"TIME:00:00:00       ",2);
+	LCDGotoXY(6,3);
+//	sprintf(KeyBuffer+len,"%02x-%02x-%04x",stTime.Date,stTime.Month,stTime.Year+0x2000);
+	len=sprintf(KeyBuffer+len,"%02x-",(unsigned int)stTime.Date);
+	len+=sprintf(KeyBuffer+len,"%02x",(unsigned int)stTime.Month);
+	len +=sprintf(KeyBuffer+len,"-%04x",(unsigned int)stTime.Year+0x2000);
+	LCDPutChar((stTime.Date/16)+'0');
+	LCDPutChar((stTime.Date%16)+'0');
+	LCDPutChar('-');
+	LCDPutChar((stTime.Month/16)+'0');
+	LCDPutChar((stTime.Month%16)+'0');
+	LCDPutChar('-');
+	LCDPutChar('2');
+	LCDPutChar('0');
+	LCDPutChar((stTime.Year/16)+'0');
+	LCDPutChar((stTime.Year%16)+'0');
+	LCDWriteLine(4,"TIME:              ",2);
+	LCDGotoXY(6,4);
+	stTime.Hours &=0x3f;
+	LCDPutChar((stTime.Hours/16)+'0');
+	LCDPutChar((stTime.Hours%16)+'0');
+	LCDPutChar(':');
+	LCDPutChar((stTime.Minutes/16)+'0');
+	LCDPutChar((stTime.Minutes%16)+'0');
+	LCDPutChar(':');
+	LCDPutChar((stTime.Seconds/16)+'0');
+	LCDPutChar((stTime.Seconds%16)+'0');
+	LCDGotoXY(6,3);
+	LCDInstWrite(LCD_BLINKING_ON);
+	KeyIndex =0;
+
+	TestType = TIME_SETTINGS;
+
+	MMI_screen = TBT_MMI_DATE_TIME_SETTINGS;
+
+}
+
+
+
+
+void BatterySerailNumber()
+{
+	LCDWriteLine(2,"                    ",2);
+	LCDWriteLine(3,"BAT.S.NO:00000000000",2);
+	LCDWriteLine(4,"                    ",2);
+ 	LCDGotoXY(10,3);
+	LCDInstWrite(LCD_BLINKING_ON);
+	strcpy(KeyBuffer,"00000000000");
+	KeyIndex =0;
+	TestType = BATTERY_SERIAL;
+	MMI_screen = TBT_MMI_BATTERY_NUMERIC_KEY;
+}
+
+
+void RelaySelections()
+{
+	FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+	LCDWriteLine(3,"1.PR-     3.K2-     ",2);
+	LCDWriteLine(4,"2.K1-     4.K3-     ",2);
+//	LCDWriteLine(2,"                    ",2);
+	LCDGotoXY(6,3);
+	if(ReadRelayValues.PRCount == 0)
+		LCDPutChar(' ');
+	else 
+		LCDPutChar('X');
+	LCDGotoXY(16,3);
+	if(ReadRelayValues.K2StartTime == 0 && ReadRelayValues.K2StopTime == 0)
+		LCDPutChar(' ');
+	else
+		LCDPutChar('X');
+
+	LCDGotoXY(6,4);
+	if(ReadRelayValues.K1StartTime == 0 && ReadRelayValues.K1StopTime == 0)
+		LCDPutChar(' ');
+	else
+		LCDPutChar('X');
+
+	LCDGotoXY(16,4);
+	if(ReadRelayValues.K3StartTime == 0 && ReadRelayValues.K3StopTime == 0)
+		LCDPutChar(' ');
+	else
+		LCDPutChar('X');
+
+	KeyIndex =0; 
+	MMI_screen = TBT_MMI_RELAY_SELECTION_KEYS;
+}
+
+void NewRelayK1()
+{
+	LCDWriteLine(1,"                    ",2);
+
+	LCDWriteLine(2,"         K1         ",2);
+	LCDWriteLine(3,"START TIME(s):      ",2);
+	LCDWriteLine(4,"STOP  TIME(s):      ",2);
+
+	
+	sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K1StopTime/1000.));
+	LCDGotoXY(15,4);
+	LCDPutText(KeyBuffer);
+	sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K1StartTime/1000.0));
+	LCDGotoXY(15,3);
+	LCDPutText(KeyBuffer);
+	LCDGotoXY(15,3);
+	KeyIndex =0;
+	LCDInstWrite(LCD_BLINKING_ON);
+	TestType = K1_RELAY;
+	MMI_screen = TBT_MMI_NEW_RELAY_KEY1;
+}
+
+void NewRelayK2()
+{
+//	unsigned char Buffer[5];
+	LCDWriteLine(1,"                    ",2);
+	LCDWriteLine(2,"         K2         ",2);
+	LCDWriteLine(3,"START TIME(s):      ",2);
+	LCDWriteLine(4,"STOP  TIME(s):      ",2);
+
+	sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K2StopTime/1000.0));
+	LCDGotoXY(15,4);
+	LCDPutText(KeyBuffer);
+	
+	sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K2StartTime/1000.0));
+	LCDGotoXY(15,3);
+	LCDPutText(KeyBuffer);
+	
+	LCDGotoXY(15,3);
+	KeyIndex =0;
+	LCDInstWrite(LCD_BLINKING_ON);
+	TestType = K2_RELAY;
+	MMI_screen = TBT_MMI_NEW_RELAY_KEY1_K2;
+
+}
+
+void NewRelayK3()
+{
+	LCDWriteLine(1,"                    ",2);
+	LCDWriteLine(2,"         K3         ",2);
+	LCDWriteLine(3,"START TIME(s):      ",2);
+	LCDWriteLine(4,"STOP  TIME(s):      ",2);
+	sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K3StopTime/1000.0));
+	LCDGotoXY(15,4);
+	LCDPutText(KeyBuffer);
+	sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.K3StartTime/1000.0));
+	LCDGotoXY(15,3);
+	LCDPutText(KeyBuffer);
+	LCDGotoXY(15,3);
+	KeyIndex =0;
+	LCDInstWrite(LCD_BLINKING_ON);
+	TestType = K3_RELAY;
+	MMI_screen = TBT_MMI_NEW_RELAY_KEY1_K3;
+}
+
+void IntervalDuration()
+{
+	LCDWriteLine(1,"                    ",2);
+	LCDGotoXY(12,1);
+	LCDPutText("PR");
+	LCDWriteLine(2,"START(s):           ",2);
+	LCDWriteLine(3,"DUR(m) :    COUNT:  ",2);
+	LCDWriteLine(4,"INTERVAL(s):        ",2);
+
+	sprintf(KeyBuffer,"%03ld",(ReadRelayValues.PRDuration)); //Modified from 1.1 float to 3 long decimals
+	LCDGotoXY(9,3);
+	LCDPutText(KeyBuffer);
+	sprintf(KeyBuffer,"%02d",ReadRelayValues.PRCount);
+	LCDGotoXY(19,3);
+	LCDPutText(KeyBuffer);
+	sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.Interval/1000.0));
+	LCDGotoXY(13,4);
+	LCDPutText(KeyBuffer);
+	sprintf(KeyBuffer,"%05.1f",((float)ReadRelayValues.PRStart/1000.0));
+	LCDGotoXY(10,2);
+	LCDPutText(KeyBuffer);
+	LCDGotoXY(10,2);
+	KeyIndex =0;
+	LCDInstWrite(LCD_BLINKING_ON);
+	TestType = START_DURATION;
+	MMI_screen = TBT_MMI_NEW_RELAY_KEY1_PR;
+}
+
+
+void IgniterSettings()
+{
+	LCDWriteLine(1,"                    ",2);
+	LCDWriteLine(2,"                    ",2);
+	LCDWriteLine(3,"IGN. DURATION:    ms",2);
+	LCDWriteLine(4,"TEST DURATION:    s ",2);
+	FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+	sprintf(KeyBuffer,"%03ld",ReadRelayValues.Testduration);
+	LCDGotoXY(15,4);
+	LCDPutText(KeyBuffer);
+
+	sprintf(KeyBuffer,"%03d",ReadRelayValues.IgnitionDuration);
+	LCDGotoXY(15,3);
+	LCDPutText(KeyBuffer);
+
+	LCDGotoXY(15,3);
+	TestType =IGN_DURATION;
+	KeyIndex  =0;
+	LCDInstWrite(LCD_BLINKING_ON);
+	MMI_screen = TBT_MMI_IGNITE_KEY;
+}
+
+
+
+
+void ConnectBatteryTerminals()
+{
+	LCDInstWrite(LCD_BLINKING_OFF);
+	LCDWriteLine(2,"                    ",2);
+	LCDWriteLine(3,"      CONNECT       ",2);
+	LCDWriteLine(4,"  BATTERY TERMINALS ",2);
+	MMI_screen	=TBT_MMI_CONNECT_BATTERY;
+}
+
+
+void TestCompleted()
+{
+	LCDWriteLine(3,"   TEST COMPLETED   ",2);
+	LCDWriteLine(2,"                    ",2);
+	LCDWriteLine(4,"PRESS * FOR MAINMENU",2);
+	MMI_screen	=TBT_MMI_TEST_COMPLETED;
+}
+
+void TestProcessing()
+{
+	
+	
+	FileName =ReadDirectory();
+	if(FileName == -1)
+	{
+    	LCDWriteLine(2,"NO RECORDS AVAILABLE",2);
+		LCDWriteLine(3,"PRESS * TO MAIN MENU",2);
+		LCDWriteLine(4,"                    ",2);
+		PutStringOnRS232(NACK); //nack
+		MMI_screen	=TBT_MMI_TEST_STATUS;
+	}
+	else 
+	{
+		LCDWriteLine(2,"                    ",2);
+		LCDWriteLine(3,"PRESS IGNITER BUTTON",2);
+		LCDWriteLine(4,"                    ",2);
+
+		WriteFiletoFlash(TotalRecords,FileName);
+		TestCompleted();
+	}
+}
+
+void ResetToAbort()
+{
+	MMI_screen	=TBT_MMI_TEST_PROCESSING;
+	LCDWriteLine(2,"                    ",2);
+	LCDWriteLine(3," PRESS * TO CONTINUE",2);
+	LCDWriteLine(4,"   # TO ABORT       ",2);
+	MMI_screen	=TBT_MMI_TEST_PROCESSING;
+
+}
+
+void ConnectLoads()
+{
+	LCDWriteLine(2,"                    ",2);
+	LCDWriteLine(3,"   CONNECT LOADS    ",2);
+	LCDWriteLine(4,"                    ",2);
+	MMI_screen	=TBT_MMI_CONNECT_LOAD;
+}
+
+void TestCondition_50p()
+{
+	LCDWriteLine(1,"4.HT                ",2);
+	LCDWriteLine(2,"5.HT.vibr.(sin)     ",2);
+	LCDWriteLine(3,"6.HT.Accl.          ",2);
+	LCDWriteLine(4,"7.HT.Axil.Accl.     ",2);
+	LCDGotoXY(1,1);
+	LCDInstWrite(LCD_BLINKING_ON);
+	MMI_screen	=TBT_MMI_CONDITION_50_1;
+}
+
+void TestCondition_50n()
+{
+	LCDWriteLine(1,"1.LT                ",2);
+	LCDWriteLine(2,"2.LT.vibr.(sin)     ",2);
+	LCDWriteLine(3,"3.LT.Accl.          ",2);
+	LCDWriteLine(4,"                    ",2);
+	LCDGotoXY(1,1);
+	LCDInstWrite(LCD_BLINKING_ON);
+	MMI_screen	=TBT_MMI_CONDITION_50_2;
+}
+
+void TestCondition_30n()
+{
+	LCDWriteLine(1,"13.LT               ",2);
+	LCDWriteLine(2,"14.LT.vibr.(Random) ",2);
+	LCDWriteLine(3,"15.LT.Accl.(Lateral)",2);
+	LCDWriteLine(4,"16.LT.Accl.(Long)   ",2);
+	LCDGotoXY(1,1);
+	LCDInstWrite(LCD_BLINKING_ON);
+	MMI_screen	=TBT_MMI_CONDITION_50_3;
+}
+void TestCondition_55p()
+{
+	LCDWriteLine(1,"17.HT               ",2);
+	LCDWriteLine(2,"18.HT.vibr.(Random) ",2);
+	LCDWriteLine(3,"19.HT.Accl.(Lateral)",2);
+	LCDWriteLine(4,"20.HT.Accl.(Long)   ",2);
+	LCDGotoXY(1,1);
+	LCDInstWrite(LCD_BLINKING_ON);
+	MMI_screen	=TBT_MMI_CONDITION_50_4;
+}
+void TestCondition_Room_Temp()
+{
+	LCDWriteLine(1,"8.Incr Humidity     ",2);
+	LCDWriteLine(2,"9.High Altitude     ",2);
+	LCDWriteLine(3,"10.800g impact      ",2);
+	LCDWriteLine(4,"11.H&F D.Con  12.RT ",2);
+	LCDGotoXY(1,1);
+	LCDInstWrite(LCD_BLINKING_ON);
+	MMI_screen	=TBT_MMI_CONDITION_50_5;
+}
+
+void TestConditoion_Menu()
+{
+	LCDWriteLine(2,"TEST CONDITION MENU ",2);
+	LCDWriteLine(3,"1.+50  2.-50  3.-30 ",2);
+	LCDWriteLine(4,"4.+55  5.Others     ",2);
+	MMI_screen	=TBT_MMI_CONDITION_MENU;
+}
+	
+/*		
+void SectionSettings()
+{
+	LCDWriteLine(2,"1.SECTION1 --       ",2);
+	LCDWriteLine(3,"2.SECTION2 --       ",2);
+	LCDWriteLine(4,"3.SECTION3 --       ",2);
+	MMI_screen	=TBT_MMI_SECTION_SETTINGS;
+}
+
+*/
+void SectionSettings()
+{
+	LCDWriteLine(1,"                    ",2);
+	LCDWriteLine(2," SECTION'S SETTINGS ",2);
+	LCDWriteLine(3,"FIRST SECT :        ",2);
+	LCDWriteLine(4,"SECOND SECT:        ",2);
+	FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+	sprintf(KeyBuffer,"%02d",((unsigned int)ReadRelayValues.SecondSection));
+	LCDGotoXY(14,4);
+	LCDPutText(KeyBuffer);
+
+	sprintf(KeyBuffer,"%02d",(unsigned int)ReadRelayValues.FirstSection);
+	LCDGotoXY(14,3);
+	LCDPutText(KeyBuffer);
+
+	LCDGotoXY(14,3);
+	LCDInstWrite(LCD_BLINKING_ON);
+	KeyIndex =0;
+	TestType = TBT_MMI_SECTION1_SETTINGS;
+	MMI_screen	=TBT_MMI_SECTION_SETTINGS;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+	
+

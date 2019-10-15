@@ -1,0 +1,253 @@
+C51 COMPILER V7.05   RTC                                                                   10/15/2019 17:32:08 PAGE 1   
+
+
+C51 COMPILER V7.05, COMPILATION OF MODULE RTC
+OBJECT MODULE PLACED IN rtc.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE rtc.c DB OE BR INCDIR(C:\SiLabs\MCU\Inc)
+
+stmt level    source
+
+   1          
+   2          #include <ds1307.h>
+   3          #include <functions.h>
+   4          struct time xdata stTime;
+   5          
+   6          void SetTime_Date(struct time stTime);
+   7          void LCDDisplayTime(struct time stTime);
+   8          
+   9          #define  WRITE                      0x00    // SMbus interface constants
+  10          #define  READ                       0x01
+  11          #define  SMBUSERR                   0x00
+  12          #define  SMBSTART                   0x08
+  13          #define  SMBRPSTART                 0x10
+  14          #define  SMBMTADDACK                0x18
+  15          #define  SMBMTADDNACK               0x20
+  16          #define  SMBMTDBACK                 0x28
+  17          #define  SMBMTDBNACK                0x30
+  18          #define  SMBMTARBLOST               0x38
+  19          #define  SMBMRADDACK                0x40
+  20          #define  SMBMRADDNACK               0x48
+  21          #define  SMBMRDBACK                 0x50
+  22          #define  SMBMRDBNACK                0x58
+  23          
+  24          #define  RTC_ADD                        0xD0 
+  25          
+  26                  
+  27          unsigned char sm_busy,Word;
+  28          bit  byte_number;
+  29          unsigned char  smb_command;
+  30          unsigned char memory_byte;
+  31          
+  32          
+  33          void delaylong(unsigned long milliseconds)
+  34          {
+  35   1               milliseconds*=125;
+  36   1               while(--milliseconds);
+  37   1      }
+  38          
+  39          //Send byte to DS1307 on I2C (Inter Integrated Circuit) Communicaiton.
+  40          void SendByteToRTC(unsigned char ByteAddress,unsigned char OutByte)
+  41          {
+  42   1              SFRPAGE   = SMB0_PAGE;
+  43   1               while (sm_busy);
+  44   1      
+  45   1           while (SMB0STA != 0xF8);
+  46   1               sm_busy = 1;
+  47   1               byte_number = 1;
+  48   1               smb_command = (RTC_ADD | WRITE);
+  49   1               memory_byte = ByteAddress;
+  50   1               Word = OutByte;
+  51   1               STA = 1;
+  52   1      }
+  53          
+  54          
+  55          
+C51 COMPILER V7.05   RTC                                                                   10/15/2019 17:32:08 PAGE 2   
+
+  56          
+  57          //Receive byte to DS1307 on I2C (Inter Integrated Circuit) Communicaiton.
+  58          unsigned char RecvByteFromRTC(unsigned char ByteAddress)
+  59          {
+  60   1               SFRPAGE   = SMB0_PAGE;
+  61   1               while (sm_busy);
+  62   1               while (SMB0STA != 0xF8);
+  63   1               sm_busy = 1;
+  64   1               byte_number = 1;
+  65   1               smb_command = (RTC_ADD | READ);
+  66   1               memory_byte = ByteAddress;
+  67   1               STA = 1;
+  68   1               while (sm_busy);
+  69   1               delaylong(10);
+  70   1               return Word;
+  71   1      }
+  72          
+  73          
+  74          
+  75          
+  76          //Intialze the I2C Communication
+  77          void SMBInit(void)
+  78          {
+  79   1               SFRPAGE   = SMB0_PAGE;
+  80   1      #ifdef EXTERNAL_CLK
+  81   1               SMB0CN = 0x44;
+  82   1           SMB0CR = 0x90; //0x80;
+  83   1      #else
+                  SMB0CN    = 0x40;
+                  SMB0CR    = 0x99; //clock is speed is 100khz
+              #endif
+  87   1      
+  88   1      //       SMB0CN = 0x44;
+  89   1      //     SMB0CR = 0x90; //0x80;
+  90   1               EIE1 |= 0x02;
+  91   1           sm_busy = 0;
+  92   1      }
+  93          
+  94          
+  95          
+  96          
+  97          //Set Time and Date
+  98          void SetTime_Date(struct time stTime)
+  99          {
+ 100   1              SendByteToRTC(SEC_ADD,stTime.Seconds);
+ 101   1              SendByteToRTC(MIN_ADD,stTime.Minutes);
+ 102   1              SendByteToRTC(HOUR_ADD,stTime.Hours);
+ 103   1              SendByteToRTC(DAY_ADD,stTime.Day);
+ 104   1              SendByteToRTC(DATE_ADD,stTime.Date);
+ 105   1              SendByteToRTC(MONTH_ADD,stTime.Month);
+ 106   1              SendByteToRTC(YEAR_ADD,stTime.Year);
+ 107   1              SendByteToRTC(CONTROL_ADD,0x10);
+ 108   1      }
+ 109          
+ 110          
+ 111          
+ 112          //Get Time and Date
+ 113          void GetTime_Date(struct time *stTime)
+ 114          {
+ 115   1              stTime->Seconds =       RecvByteFromRTC(SEC_ADD);
+ 116   1              stTime->Minutes =       RecvByteFromRTC(MIN_ADD);
+ 117   1              stTime->Hours   =       RecvByteFromRTC(HOUR_ADD);
+C51 COMPILER V7.05   RTC                                                                   10/15/2019 17:32:08 PAGE 3   
+
+ 118   1              stTime->Day       =     RecvByteFromRTC(DAY_ADD);
+ 119   1              stTime->Date      =     RecvByteFromRTC(DATE_ADD);
+ 120   1              stTime->Month     =     RecvByteFromRTC(MONTH_ADD);
+ 121   1              stTime->Year      =     RecvByteFromRTC(YEAR_ADD);
+ 122   1      //      byte =  RecvByteFromRTC(CONTROL_ADD);
+ 123   1      }
+ 124          
+ 125          
+ 126          
+ 127          //Disaplay time on lcd
+ 128          void DisplayTime()
+ 129          {
+ 130   1              unsigned char idata DateBuffer[15];
+ 131   1              GetTime_Date(&stTime);
+ 132   1              stTime.Year +=0x2000;
+ 133   1              LCDWriteLine(1,"                    ",2);
+ 134   1              sprintf(DateBuffer,"%02x-%02x-%04x",(unsigned int)stTime.Date,(unsigned int)stTime.Month,(unsigned int)st
+             -Time.Year);        
+ 135   1              LCDWriteLine(1,DateBuffer,0);
+ 136   1              stTime.Hours &=0x3F;
+ 137   1              sprintf(DateBuffer,"%02x:%02x",(unsigned int)stTime.Hours,(unsigned int)stTime.Minutes);
+ 138   1              LCDWriteLine(1,DateBuffer,1);
+ 139   1              LCDInstWrite(LCD_CURSOR_OFF);
+ 140   1      }
+ 141          
+ 142          
+ 143          //I2C(SMBus communication) Interrupt Service Routine                              
+ 144          void SMBUS_ISR (void) interrupt 7
+ 145          {
+ 146   1              switch(SMB0STA)
+ 147   1          {
+ 148   2                  case SMBSTART:
+ 149   2                       SMB0DAT = (smb_command & 0xFE);
+ 150   2                                STA = 0;
+ 151   2                              
+ 152   2                      break;
+ 153   2                      case SMBRPSTART:
+ 154   2                           SMB0DAT = smb_command;
+ 155   2                               STA = 0;
+ 156   2                              
+ 157   2                      break;
+ 158   2                      case SMBMTADDACK:
+ 159   2                           SMB0DAT = memory_byte;
+ 160   2                      break;
+ 161   2                      case SMBMTADDNACK:
+ 162   2                      case SMBMTDBNACK:
+ 163   2                      case SMBMTARBLOST:
+ 164   2                            STO = 1;
+ 165   2                                STA = 1;
+ 166   2                      break;
+ 167   2                      case SMBMTDBACK:
+ 168   2                           if (byte_number != 0)
+ 169   2                          {
+ 170   3                                   if (smb_command & 0x01)
+ 171   3                                                   STA = 1;
+ 172   3                                   else
+ 173   3                                   {
+ 174   4                                        SMB0DAT = Word;
+ 175   4                                            byte_number = 0;
+ 176   4                                   } 
+ 177   3                  }
+ 178   2                              else    
+C51 COMPILER V7.05   RTC                                                                   10/15/2019 17:32:08 PAGE 4   
+
+ 179   2                              {
+ 180   3                                        STO = 1;
+ 181   3                                        sm_busy = 0;
+ 182   3                              }
+ 183   2                              if(smb_command & 0x01)
+ 184   2                                       STA = 1;
+ 185   2                              else
+ 186   2                              {
+ 187   3                                  SMB0DAT = Word;
+ 188   3                                      byte_number = 0;
+ 189   3                              } 
+ 190   2                                                        
+ 191   2                      break;
+ 192   2                      case SMBMRADDACK:
+ 193   2                            AA = 0;
+ 194   2                      break;
+ 195   2                      case SMBMRADDNACK:
+ 196   2                                STA = 1;
+ 197   2                      break;
+ 198   2              case SMBMRDBACK:
+ 199   2                           STO = 1;
+ 200   2                           sm_busy = 0;
+ 201   2                      break;
+ 202   2              case SMBMRDBNACK:
+ 203   2                           Word = SMB0DAT;
+ 204   2                           STO = 1;
+ 205   2                           sm_busy = 0;
+ 206   2                      break;
+ 207   2                      case 0x00: //BUS ERROR
+ 208   2                              SI =0;
+ 209   2                      break;
+ 210   2                      case 0xF8:
+ 211   2                              SI = 0;
+ 212   2                      break;
+ 213   2      
+ 214   2              default:
+ 215   2                           STO = 1;
+ 216   2                           sm_busy = 0;
+ 217   2                  break;      
+ 218   2              }
+ 219   1               SI = 0;
+ 220   1      }
+ 221          
+ 222          
+ 223          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    629    ----
+   CONSTANT SIZE    =     46    ----
+   XDATA SIZE       =      8    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      4      15
+   IDATA SIZE       =   ----      15
+   BIT SIZE         =      1    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

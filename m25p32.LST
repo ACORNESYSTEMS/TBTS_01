@@ -1,0 +1,58 @@
+C51 COMPILER V7.05   M25P32                                                                09/04/2007 14:12:58 PAGE 1   
+
+
+C51 COMPILER V7.05, COMPILATION OF MODULE M25P32
+OBJECT MODULE PLACED IN m25p32.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.exe m25p32.h DB OE
+
+stmt level    source
+
+   1          
+   2          #ifndef _M25P32__H
+   3          #define _M25P32__H
+   4          
+   5          
+   6          #define SPI_DUMMY_DATA                  0x00
+   7          #define SPI_FLASH_INS_RDID              0x9F  //READ IDENTIFICATION 
+   8          #define SPI_FLASH_INS_RDSR              0x05  // READ STATUS REGISTER
+   9          #define SPI_FLASH_INS_WREN              0x06  //WRITE ENABLE
+  10          #define SPI_FLASH_INS_WRDI              0x04  //WRITE DISABLE
+  11          #define SPI_FLASH_INS_READ              0x03  //READ DATA BYTES
+  12          #define SPI_FLASH_INS_PP                0x02  //PAGE PROGRAM
+  13          #define SPI_FLASH_INS_SE                0xD8  //SECTOR ERASE
+  14          #define SPI_FLASH_INS_BE                0xC7  // bulk erase
+  15          
+  16          #define DEVICE_ID                               0x2016
+  17          #define MANUFACTURER_ID                 0x20
+  18          
+  19          #define CHIP0                                   0x00
+  20          #define CHIP1                                   0x01
+  21          #define CHIP2                                   0x02
+  22          #define CHIP3                                   0x03
+  23          
+  24          
+  25          struct stFlash
+  26          {
+  27                  unsigned long Address;
+  28                  unsigned char ChipSelect;
+  29                  unsigned char SectorNumber;
+  30                  unsigned long  NoOfElements;
+  31                  unsigned long Offset;
+  32                  unsigned char idata *Buffer;
+  33          };
+  34          #endif
+  35          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   ----    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,15 @@
+
+BL51 BANKED LINKER/LOCATER V5.03 - SN: K1C5U-J4828D
+COPYRIGHT KEIL ELEKTRONIK GmbH 1987 - 2002
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\main.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\uart.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\rtc.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\lcd.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\Keypad.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\Flash_Tbt.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\Flash_internal.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\Ext_Adc.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\crossbar.obj"  TO "C:\Users\soroka\Desktop\TBTS_05_10_2019\tbts5" RS(256) PL(68) PW(78) 
+
+Program Size: data=174.2 xdata=4172 code=37942
+LINK/LOCATE RUN COMPLETE.  0 WARNING(S),  0 ERROR(S)

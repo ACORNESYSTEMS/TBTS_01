@@ -1,0 +1,129 @@
+C51 COMPILER V7.05   ADC1                                                                  10/15/2019 14:32:26 PAGE 1   
+
+
+C51 COMPILER V7.05, COMPILATION OF MODULE ADC1
+OBJECT MODULE PLACED IN adc1.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE adc1.c DB OE BR INCDIR(C:\SiLabs\MCU\Inc)
+
+stmt level    source
+
+   1          /*
+   2          File Name :adc1.c
+   3          Description :Intialze the controller ADC and Interrupt service routine,store data in ADC buffer
+   4          */
+   5          
+   6          #include <functions.h>
+   7          
+   8          #define ADC_RESOLUTION          0.00003662109375  //16 bit resolution formulae 
+   9          #define ADC_12BIT_RESOLUTION    0.0005859375
+  10          #define INT_DEC                         256               // integrate and decimate ratio
+  11          
+  12          void ADCInit (void);
+  13          void TIMER3_Init (int counts);
+  14          void ADC_ISR (void);
+  15          
+  16          unsigned int xdata ADCCh[ADC_MAX_BUFF_SIZE];
+  17          //   unsigned int idata Adc_Write_Index;
+  18          unsigned int idata Adc_Read_Index;
+  19          unsigned int idata NoOfElementsToWrite;
+  20          unsigned long Length=0;
+  21          
+  22          sfr16 RCAP3    = 0xCA;                 // Timer3 reload value
+  23          sfr16 TMR3     = 0xCC;                 // Timer3 counter
+  24          sfr16 ADC0     = 0xbe;                 // ADC0 data
+  25          
+  26                                    
+  27          void ADCInit (void)
+  28          {
+  29   1              char SFRPAGE_SAVE = SFRPAGE;
+  30   1              SFRPAGE = ADC0_PAGE;
+  31   1       
+  32   1              ADC0CN = 0x04;                      // ADC disabled; normal tracking
+  33   1                                             // mode; ADC conversions are initiated 
+  34   1                                             // on overflow of Timer3; ADC data is
+  35   1                                             // right-justified
+  36   1              REF0CN = 0x03;                      // on-chip VREF,
+  37   1              AD0EN =1;                                   // and VREF output buffer
+  38   1              AMX0SL = 0x00;                      // Select ch0 ADC mux output
+  39   1      
+  40   1      #ifdef EXTERNAL_CLK
+  41   1              ADC0CF = (SYSTEMCLOCKK/2500000) << 3;     // ADC conversion clock = 2.5MHz
+  42   1      #else
+                      ADC0CF    = 0x88;
+              #endif
+  45   1      
+  46   1      // ADC0CF = (SYSTEMCLOCKK/2500000) << 3;     // ADC conversion clock = 2.5MHz
+  47   1         EIE2 |= 0x02;                       // enable ADC interrupts
+  48   1         SFRPAGE = SFRPAGE_SAVE;
+  49   1      }
+  50          
+  51          
+  52          //-----------------------------------------------------------------------------
+  53          // Timer3_Init
+  54          //-----------------------------------------------------------------------------
+  55          // Configure Timer3 to auto-reload at interval specified by <counts> (no
+C51 COMPILER V7.05   ADC1                                                                  10/15/2019 14:32:26 PAGE 2   
+
+  56          // interrupt generated) using SYSCLK as its time base.
+  57          
+  58          
+  59          void Timer3_Init (int counts)
+  60          {
+  61   1         char SFRPAGE_SAVE = SFRPAGE;        // Save Current SFR page
+  62   1         SFRPAGE = TMR3_PAGE;
+  63   1         TMR3CN = 0x00;                      // Stop Timer3; Clear TF3;
+  64   1         TMR3CF = 0x08;                      // use SYSCLK as timebase
+  65   1         RCAP3   = -counts;                  // Init reload values
+  66   1         TMR3    = RCAP3;                    // set to reload immediately
+  67   1         EIE2   &= ~0x01;                    // disable Timer3 interrupts
+  68   1         SFRPAGE = SFRPAGE_SAVE;             // Restore SFR page
+  69   1      }
+  70          
+  71          //Adc isr routine
+  72          
+  73          #ifdef INTERNAL_ADC
+              
+              void ADC0_ISR (void) interrupt 15
+              {
+                      static unsigned int_dec=INT_DEC;    // integrate/decimate counter
+                                                     // we post a new result when
+                                                     // int_dec = 0
+                      static long accumulator=0L;         // here's where we integrate the
+                                                     // ADC samples
+              
+                      AD0INT = 0;          // clear ADC conversion complete indicator
+                      accumulator += ADC0;                            // read ADC value and add to running total
+                      int_dec--;                          // update decimation counter
+                      if (int_dec == 0)
+                      {                                                       // if zero, then post result
+                              int_dec = INT_DEC;               // reset counter
+                      ADCCh[Adc_Write_Index] = accumulator >> 4;
+                              AMX0SL++;
+                              if(AMX0SL == 4)
+                                      AMX0SL = 0;
+                              NoOfElementsToWrite++;
+              //              if(NoOfElementsToWrite >=ADC_MAX_BUFF_SIZE)
+              //                      LCDWriteLine(2,"ADC BUFFER OVERFLOW",2);
+                      accumulator = 0L; 
+                              Adc_Write_Index++;               // reset accumulator
+                              if(Adc_Write_Index == ADC_MAX_BUFF_SIZE)
+                                      Adc_Write_Index = 0;
+                 }
+              }
+              
+              
+              #endif
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     56    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   3072    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      4    ----
+   IDATA SIZE       =      4    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

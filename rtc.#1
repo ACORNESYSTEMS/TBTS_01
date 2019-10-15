@@ -1,0 +1,230 @@
+
+#include <ds1307.h>
+#include <functions.h>
+struct time xdata stTime;
+
+void SetTime_Date(struct time stTime);
+void LCDDisplayTime(struct time stTime);
+
+#define  WRITE                      0x00    // SMbus interface constants
+#define  READ                       0x01
+#define  SMBUSERR                   0x00
+#define  SMBSTART                   0x08
+#define  SMBRPSTART                 0x10
+#define  SMBMTADDACK                0x18
+#define  SMBMTADDNACK               0x20
+#define  SMBMTDBACK                 0x28
+#define  SMBMTDBNACK                0x30
+#define  SMBMTARBLOST               0x38
+#define  SMBMRADDACK                0x40
+#define  SMBMRADDNACK               0x48
+#define  SMBMRDBACK                 0x50
+#define  SMBMRDBNACK                0x58
+
+#define  RTC_ADD                 	0xD0 
+
+	
+unsigned char sm_busy,Word;
+bit  byte_number;
+unsigned char  smb_command;
+unsigned char memory_byte;
+
+
+void delaylong(unsigned long milliseconds)
+{
+	 milliseconds*=125;
+	 while(--milliseconds);
+}
+
+//Send byte to DS1307 on I2C (Inter Integrated Circuit) Communicaiton.
+void SendByteToRTC(unsigned char ByteAddress,unsigned char OutByte)
+{
+	SFRPAGE   = SMB0_PAGE;
+	 while (sm_busy);
+
+     while (SMB0STA != 0xF8);
+	 sm_busy = 1;
+	 byte_number = 1;
+	 smb_command = (RTC_ADD | WRITE);
+	 memory_byte = ByteAddress;
+	 Word = OutByte;
+	 STA = 1;
+}
+
+
+
+
+//Receive byte to DS1307 on I2C (Inter Integrated Circuit) Communicaiton.
+unsigned char RecvByteFromRTC(unsigned char ByteAddress)
+{
+	 SFRPAGE   = SMB0_PAGE;
+	 while (sm_busy);
+	 while (SMB0STA != 0xF8);
+	 sm_busy = 1;
+	 byte_number = 1;
+	 smb_command = (RTC_ADD | READ);
+	 memory_byte = ByteAddress;
+	 STA = 1;
+	 while (sm_busy);
+	 delaylong(10);
+	 return Word;
+}
+
+
+
+
+//Intialze the I2C Communication
+void SMBInit(void)
+{
+	 SFRPAGE   = SMB0_PAGE;
+#ifdef EXTERNAL_CLK
+	 SMB0CN = 0x44;
+     SMB0CR = 0x90; //0x80;
+#else
+    SMB0CN    = 0x40;
+    SMB0CR    = 0x99; //clock is speed is 100khz
+#endif
+
+//	 SMB0CN = 0x44;
+//     SMB0CR = 0x90; //0x80;
+	 EIE1 |= 0x02;
+     sm_busy = 0;
+}
+
+
+
+
+//Set Time and Date
+void SetTime_Date(struct time stTime)
+{
+	SendByteToRTC(SEC_ADD,stTime.Seconds);
+	SendByteToRTC(MIN_ADD,stTime.Minutes);
+	SendByteToRTC(HOUR_ADD,stTime.Hours);
+	SendByteToRTC(DAY_ADD,stTime.Day);
+	SendByteToRTC(DATE_ADD,stTime.Date);
+	SendByteToRTC(MONTH_ADD,stTime.Month);
+	SendByteToRTC(YEAR_ADD,stTime.Year);
+	SendByteToRTC(CONTROL_ADD,0x10);
+}
+
+
+
+//Get Time and Date
+void GetTime_Date(struct time *stTime)
+{
+	stTime->Seconds =	RecvByteFromRTC(SEC_ADD);
+	stTime->Minutes =	RecvByteFromRTC(MIN_ADD);
+	stTime->Hours   =	RecvByteFromRTC(HOUR_ADD);
+	stTime->Day	  =	RecvByteFromRTC(DAY_ADD);
+	stTime->Date 	  =	RecvByteFromRTC(DATE_ADD);
+	stTime->Month	  =	RecvByteFromRTC(MONTH_ADD);
+	stTime->Year 	  =	RecvByteFromRTC(YEAR_ADD);
+//	byte =	RecvByteFromRTC(CONTROL_ADD);
+}
+
+
+
+//Disaplay time on lcd
+void DisplayTime()
+{
+	unsigned char idata DateBuffer[15];
+	GetTime_Date(&stTime);
+	stTime.Year +=0x2000;
+	
+	LCDWriteLine(1,"                    ",2);
+	sprintf(DateBuffer,"%02x-%02x-%04x",(unsigned int)stTime.Date,(unsigned int)stTime.Month,(unsigned int)stTime.Year);	
+	LCDWriteLine(1,DateBuffer,0);
+//	delaylong(100);
+//	delaylong(100);
+//	delaylong(100);
+	stTime.Hours &=0x3F;
+	sprintf(DateBuffer,"%02x:%02x",(unsigned int)stTime.Hours,(unsigned int)stTime.Minutes);
+//	LCDGotoXY(10,1);
+//	LCDPutText(DateBuffer);
+	LCDWriteLine(1,DateBuffer,1);
+	LCDInstWrite(LCD_CURSOR_OFF);
+	//delaylong(10);	
+}
+
+
+//I2C(SMBus communication) Interrupt Service Routine				  
+void SMBUS_ISR (void) interrupt 7
+{
+	switch(SMB0STA)
+    {
+	    case SMBSTART:
+	         SMB0DAT = (smb_command & 0xFE);
+			  STA = 0;
+			
+	  	break;
+		case SMBRPSTART:
+		     SMB0DAT = smb_command;
+		  	 STA = 0;
+			
+		break;
+		case SMBMTADDACK:
+		     SMB0DAT = memory_byte;
+		break;
+		case SMBMTADDNACK:
+		case SMBMTDBNACK:
+		case SMBMTARBLOST:
+		      STO = 1;
+			  STA = 1;
+		break;
+		case SMBMTDBACK:
+		     if (byte_number != 0)
+		    {
+			     if (smb_command & 0x01)
+				  	     STA = 1;
+			     else
+			     {
+			          SMB0DAT = Word;
+				      byte_number = 0;
+			     } 
+            }
+			else	
+			{
+				  STO = 1;
+				  sm_busy = 0;
+			}
+			if(smb_command & 0x01)
+			  	 STA = 1;
+			else
+			{
+			    SMB0DAT = Word;
+			  	byte_number = 0;
+			} 
+						  
+ 	 	break;
+		case SMBMRADDACK:
+		      AA = 0;
+		break;
+		case SMBMRADDNACK:
+			  STA = 1;
+		break;
+        case SMBMRDBACK:
+		     STO = 1;
+		     sm_busy = 0;
+		break;
+        case SMBMRDBNACK:
+		     Word = SMB0DAT;
+		     STO = 1;
+		     sm_busy = 0;
+		break;
+		case 0x00: //BUS ERROR
+			SI =0;
+		break;
+		case 0xF8:
+			SI = 0;
+		break;
+
+        default:
+		     STO = 1;
+		     sm_busy = 0;
+	    break;	
+	}
+	 SI = 0;
+}
+
+
+

@@ -1,0 +1,9 @@
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\main.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\uart.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\rtc.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\lcd.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\Keypad.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\Flash_Tbt.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\Flash_internal.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\Ext_Adc.obj",
+"C:\Users\soroka\Desktop\TBTS_05_10_2019\crossbar.obj"  TO "C:\Users\soroka\Desktop\TBTS_05_10_2019\tbts5" RS(256) PL(68) PW(78) 

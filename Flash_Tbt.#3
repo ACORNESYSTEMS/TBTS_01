@@ -1,0 +1,918 @@
+
+
+#include <m25p32.h>
+#include <functions.h>
+#include "Record.h"
+#include "ds1307.h"
+
+#define ENABLE 			0
+#define DISABLE 		1
+#define SYSCLK 			22118400
+
+unsigned char TransmitChksum;
+bit gbDebugPort;
+bit Remote;
+//unsigned char BatType;
+
+extern unsigned char BatteryIndex;
+unsigned char xdata RecordsUsed;
+unsigned char idata FreeRecords;
+volatile unsigned long idata TestDuration=0;
+unsigned char xdata TmpBuffer[22];
+
+struct Relay xdata WriteRelayValues;
+struct Relay xdata ReadRelayValues;
+extern struct time xdata stTime;
+extern struct Record xdata stRecordInfo;
+extern struct Record xdata stRecordReadInfo;
+extern volatile bit OneMilliSecBit;
+
+
+unsigned int xdata ADCCh[ADC_MAX_BUFF_SIZE];
+
+
+unsigned int idata Adc_Read_Index;
+//extern unsigned int idata Adc_Write_Index;
+unsigned int idata Adc_Write_Index;
+unsigned int idata NoOfElementsToWrite;
+
+extern	unsigned int idata Adcvoltage;
+
+extern volatile bit IgniterFlag;
+extern volatile unsigned long ullTimeInMilliseconds;
+extern unsigned char SectionsMapping[4];
+
+
+
+
+
+void Init_SPI( void );
+char FlashWrite(struct stFlash FlashInfo);
+unsigned char FlashRead (struct stFlash FlashInfo);
+char FlashSectorErase(struct stFlash FlashInfo);
+bit EnableDisableChipSelect(unsigned char ChipSelect,bit SetValue);
+bit ReadStatusRegister(unsigned char);
+void Timer0_us (unsigned us);
+
+
+//timer0 for flash timing enabling and disabling 
+void Timer0_us (unsigned us)
+{
+   char SFRPAGE_SAVE = SFRPAGE;
+   unsigned i;                         		// millisecond counter
+
+   SFRPAGE = TIMER01_PAGE;
+   TCON  &= ~0x30;                     		// STOP Timer0 and clear overflow flag
+   TMOD  &= ~0x0f;                     		// configure Timer0 to 16-bit mode
+   TMOD  |=  0x01;
+   CKCON |=  0x08;                     		// Timer0 counts SYSCLKs
+
+   for (i = 0; i < us; i++)
+   { 							       		// count microseconds
+      TR0 = 0;                         		// STOP Timer0
+      TH0 = (-SYSCLK/1000000) >> 8;    		// set Timer0 to overflow in 1us
+      TL0 = -SYSCLK/1000000;
+      TR0 = 1;                         		// START Timer0
+      while (TF0 == 0);                		// wait for overflow
+      TF0 = 0;                         		// clear overflow indicator
+   }
+   SFRPAGE = SFRPAGE_SAVE;
+}
+
+
+//Enable Flash ic
+bit Select_Chip_Number_Enable(unsigned char Chip_Number)
+{
+	char SFRPAGE_SAVE;
+	if(Chip_Number == CHIP0)
+   {
+	   SFRPAGE_SAVE = SFRPAGE;
+	   SFRPAGE = SPI0_PAGE;
+   	   NSSMD0 = 0;                          // select Flash
+	   NSSMD0 = 0;                          // find out why Keil compiler is 
+	}
+	else if(Chip_Number == CHIP1)
+	{
+		SFRPAGE_SAVE = SFRPAGE;
+		SFRPAGE = 0x00;
+		CE =0;
+	//	CHIP2_ENABLE = 0;
+	}	
+	else if(Chip_Number == CHIP2)
+		CHIP3_ENABLE = 0;
+	else
+		return 0; //fail
+	SFRPAGE = SFRPAGE_SAVE;
+	return 1; //success 
+}
+
+//disable flash ic
+bit Select_Chip_Number_Disable(unsigned char Chip_Number)
+{
+	char SFRPAGE_SAVE = SFRPAGE;
+  if(Chip_Number == CHIP0)
+   {
+	   SFRPAGE = SPI0_PAGE;
+   	   NSSMD0 = 1;                          // deselect Flash
+
+	}
+	else if(Chip_Number == CHIP1)
+	{
+		SFRPAGE = 0x0F;
+		CE  =1;
+	}
+	else if(Chip_Number == CHIP2)
+		CHIP3_ENABLE = 1;
+	else
+		return 0; //fail
+	SFRPAGE = SFRPAGE_SAVE;
+	return 1; //success 
+}
+
+
+bit EnableDisableChipSelect(unsigned char ChipSelect,bit SetValue)
+{
+   char SFRPAGE_SAVE;
+   if(ChipSelect == CHIP0)
+   {
+	   SFRPAGE_SAVE = SFRPAGE;
+	   SFRPAGE = SPI0_PAGE;
+   	   NSSMD0 = SetValue;                          // select Flash
+	   NSSMD0 = SetValue;                          // find out why Keil compiler is 
+	}
+	else if(ChipSelect == CHIP1)
+	{
+		SFRPAGE_SAVE = SFRPAGE;
+		SFRPAGE = 0x00;
+		CE =SetValue;
+	}	
+	else if(ChipSelect == CHIP2)
+		CHIP3_ENABLE = SetValue;
+	else
+		return 0; 								//fail
+	SFRPAGE = SFRPAGE_SAVE;
+	return 1; //success 
+}
+//Send data to spi port
+void SendDatatoSPI(unsigned char Value)
+{
+	SFRPAGE = SPI0_PAGE;
+	SPIF = 0;
+   	SPI0DAT = Value;
+   	while (SPIF == 0);
+}
+ 
+//Erase the sector
+char FlashSectorErase(struct stFlash FlashInfo)
+{
+  char SFRPAGE_SAVE = SFRPAGE;
+  unsigned long Addr;
+
+   SFRPAGE = SPI0_PAGE;
+   if(FlashInfo.SectorNumber >0x40)
+   	return 0;
+                          	// select Flash
+   if(!Select_Chip_Number_Enable(FlashInfo.ChipSelect))
+   	return 0;
+
+   Timer0_us (1);                      		// wait at least 250ns (CS setup time)
+
+   											// transmit WREN (Write Enable) opcode
+   SPIF = 0;
+   SPI0DAT = SPI_FLASH_INS_WREN;
+   while (SPIF == 0);
+
+   Timer0_us (1);                      		// wait at least 250ns (CS hold time)
+   if(!Select_Chip_Number_Disable(FlashInfo.ChipSelect))// de-select Flash to set WREN latch
+   		return 0;
+   Timer0_us (1);                      		// wait at least 500ns (CS disable 
+                                       		// time)
+
+  // NSSMD0 = 0;                          	// select Flash
+   if(!Select_Chip_Number_Enable(FlashInfo.ChipSelect))
+   		return 0;
+
+   Timer0_us (1);                      		// wait at least 250ns (CS setup time)
+
+   Addr =((unsigned long)FlashInfo.SectorNumber<<16);
+   											// transmit WRITE opcode
+   SPIF = 0;
+   SPI0DAT = SPI_FLASH_INS_SE;
+   while (SPIF == 0);
+
+
+   											// transmit Address MSB-first
+   SPIF = 0;                           		// transmit MSB of address
+   SPI0DAT = (Addr >> 16);
+   while (SPIF == 0);
+
+   SPIF = 0;                           		// transmit MSB of address
+   SPI0DAT = (Addr >> 8);
+   while (SPIF == 0);
+
+   SPIF = 0;                           		// transmit LSB of address
+   SPI0DAT = Addr;
+   while (SPIF == 0);
+   Timer0_us (1);                      		// wait at least 250ns (CS hold time)
+
+//   NSSMD0 = 1;                          	// deselect Flash 
+	if(!Select_Chip_Number_Disable(FlashInfo.ChipSelect))
+		return 0;
+
+   do 
+   {
+
+      Timer0_us (1);                   		// wait at least 500ns (CS disable time)
+
+      //NSSMD0 = 0;                       	// select Flash to begin polling
+	  if(!Select_Chip_Number_Enable(FlashInfo.ChipSelect))
+   			return 0;
+
+      Timer0_us (1);                   		// wait at least 250ns (CS setup time)
+      SPIF = 0;
+      SPI0DAT = SPI_FLASH_INS_RDSR;    		// send Read Status register opcode
+      while (SPIF == 0);
+
+      SPIF = 0;
+      SPI0DAT = 0;                     		// dummy write to read status register
+      while (SPIF == 0);
+
+      Timer0_us (1);                   		// wait at least 250ns (CS hold time)
+                                       
+//      NSSMD0 = 1;                       	// de-select Flash
+   		if(!Select_Chip_Number_Disable(FlashInfo.ChipSelect))
+   			return 0;
+
+
+   } while (SPI0DAT & 0x01);           		// poll until WIP (Write In Progress) bit goes to '0'
+                                       
+   Timer0_us (1);                      		// wait at least 500ns (CS disable time)
+                                      
+   SFRPAGE = SFRPAGE_SAVE;
+
+
+
+}
+//Write data to flash
+char FlashWrite(struct stFlash FlashInfo)
+{
+
+	char SFRPAGE_SAVE = SFRPAGE;
+	unsigned long  Addr=0;
+	unsigned int i;
+	unsigned char xdata Buffer[22];
+
+//	unsigned char data ch;
+
+   SFRPAGE = SPI0_PAGE;
+//   if(FlashInfo.SectorNumber >0x40)
+// 	return 0;
+
+   if(!Select_Chip_Number_Enable(FlashInfo.ChipSelect))
+   	return 0;
+                         	// select Flash
+   Timer0_us (1);                      		// wait at least 250ns (CS setup time)
+
+										   	// transmit WREN (Write Enable) opcode
+   SPIF = 0;
+   SPI0DAT = SPI_FLASH_INS_WREN;
+   while (SPIF == 0);
+
+   Timer0_us (1);                      		// wait at least 250ns (CS hold time)
+   
+   if(!Select_Chip_Number_Disable(FlashInfo.ChipSelect))
+   		return 0;
+                         // de-select Flash to set WREN latch
+
+   Timer0_us (1);                      		// wait at least 500ns (CS disable 
+                                       		// time)
+   if(!Select_Chip_Number_Enable(FlashInfo.ChipSelect))
+   		return 0;
+                         	// select Flash
+   Timer0_us (1);                      		// wait at least 250ns (CS setup time)
+
+
+   SPIF = 0;						   		// transmit WRITE opcode
+   SPI0DAT = SPI_FLASH_INS_PP;
+   while (SPIF == 0);
+//   Addr = ((unsigned long)FlashWrite.SectorNumber<<16)+((unsigned int)(FlashWrite.PageNumber) <<8);				
+   FlashInfo.Address += FlashInfo.Offset;
+   SPIF = 0;                           		// transmit MSB of address
+   SPI0DAT = (FlashInfo.Address >> 16);
+   while (SPIF == 0);
+
+   SPIF = 0;                           		// transmit MSB of address
+   SPI0DAT = (FlashInfo.Address >> 8);
+   while (SPIF == 0);
+
+   SPIF = 0;                           		// transmit LSB of address
+   SPI0DAT = FlashInfo.Address;
+   while (SPIF == 0);
+
+
+	for(i=0;i<FlashInfo.NoOfElements;i++)
+	{
+		SPIF = 0;
+		SPI0DAT = ADCCh[Adc_Read_Index]>>8; //FlashInfo.Buffer[i]; //'B'; //*value;
+		while (SPIF == 0);
+		SPIF = 0;
+		SPI0DAT = ADCCh[Adc_Read_Index]; //FlashInfo.Buffer[i]; //'B'; //*value;
+		while (SPIF == 0);
+	
+//		Timer0_us (10);
+//		Timer0_us (10);
+//		Timer0_us (10);
+//		sprintf(Buffer,"\r\n%d==%d==%04x\r\n",i,Adc_Read_Index,ADCCh[Adc_Read_Index]);//
+//		PutStringOnRS232(Buffer);
+
+	//	delay(0xfff);
+//		delay(0x1ff);		
+	
+		Adc_Read_Index++;
+		if(Adc_Read_Index == ADC_MAX_BUFF_SIZE)
+			Adc_Read_Index=0;
+	}
+
+   Timer0_us (1);                      		// wait at least 250ns (CS hold time)
+
+                         	// deselect Flash (initiate Flash 
+                                    		// write cycle)
+   if(!Select_Chip_Number_Disable(FlashInfo.ChipSelect))
+   		return 0;
+
+										   // now poll Read Status Register (RDSR)
+										   // for Write operation complete
+   	do
+    {
+
+      Timer0_us (1);                   		// wait at least 500ns (CS disable
+                                       		// time)
+	 if(!Select_Chip_Number_Enable(FlashInfo.ChipSelect))
+   		return 0;
+                      	// select Flash to begin polling
+
+      Timer0_us (1);                   		// wait at least 250ns (CS setup time)
+
+      SPIF = 0;
+      SPI0DAT = SPI_FLASH_INS_RDSR;         // send Read Status register opcode
+      while (SPIF == 0);
+
+      SPIF = 0;
+      SPI0DAT = 0;                     		// dummy write to read status register
+      while (SPIF == 0);
+
+      Timer0_us (1);                   		// wait at least 250ns (CS hold
+                                       		// time)
+                     	// de-select Flash
+   	  if(!Select_Chip_Number_Disable(FlashInfo.ChipSelect))
+   			return 0;
+
+   } while (SPI0DAT & 0x01);           		// poll until WIP (Write In 
+                                       		// Progress) bit goes to '0'
+
+   Timer0_us (1);                      		// wait at least 500ns (CS disable
+                                       		// time)
+   SFRPAGE = SFRPAGE_SAVE;
+}
+//Read data from flash 
+unsigned char FlashRead (struct stFlash FlashInfo)
+{
+	unsigned char Byte;
+	char SFRPAGE_SAVE = SFRPAGE;
+   	unsigned int i;
+   if(FlashInfo.SectorNumber >0x40)
+   		return 0;
+   if(!Select_Chip_Number_Enable(FlashInfo.ChipSelect))
+   	return 0;                               // optimizing one of these out
+   Timer0_us (1);                      		// wait at least 250ns (CS setup time)
+									   		// transmit READ opcode
+   SPIF = 0;
+   SPI0DAT = SPI_FLASH_INS_READ;
+   while (SPIF == 0);
+   FlashInfo.Address +=FlashInfo.Offset;
+   SPIF = 0;                           		// transmit MSB of address
+   SPI0DAT = (FlashInfo.Address >> 16);
+   while (SPIF == 0);
+   SPIF = 0;                           		//transmit MSB of address
+   SPI0DAT = (FlashInfo.Address >> 8);
+   while (SPIF == 0);
+   SPIF = 0;                           		// transmit LSB of address
+   SPI0DAT = FlashInfo.Address;
+   while (SPIF == 0);
+   for(i=0;i<FlashInfo.NoOfElements;i++)
+   {		
+		SPIF = 0;
+	   	SPI0DAT = 0;   						//Intiate dummy transmit to read the data
+	   	while (SPIF == 0);
+		Byte = SPI0DAT;       	//read data from SPI
+		TransmitChksum ^= Byte;
+	   	TransmitCharOnRS232(Byte); //FlashInfo.Buffer[i]);
+   } 
+   Timer0_us (1);                      		//wait at least 250ns (CS hold time)
+   if(!Select_Chip_Number_Disable(FlashInfo.ChipSelect))
+   		return 0;
+   Timer0_us (1);                      		//wait at least 500ns (CS disable time)
+   SFRPAGE = SFRPAGE_SAVE;
+   return 1;
+}
+//Check the Flash is working or not
+//return 1 -Flash is working
+//return 0 -Flash is not working check the hardware
+char Read_Device_Id_Status(unsigned char ChipSelect)
+{
+	unsigned int Device_Id;
+	unsigned char Manfacturer_Id;
+	SFRPAGE = SPI0_PAGE;
+	if(!EnableDisableChipSelect(ChipSelect,ENABLE))   // select Flash
+		return 0;
+	SendDatatoSPI(SPI_FLASH_INS_RDID);
+    Timer0_us (1);                      		//wait at least 500ns (CS disable time)
+	
+	SPIF = 0;
+	SPI0DAT = SPI_DUMMY_DATA;					//intiate dummy transmit to read the data
+	while (SPIF == 0);
+	Manfacturer_Id= SPI0DAT;							//read the data from flash
+
+	SPIF = 0;
+	SPI0DAT = SPI_DUMMY_DATA;                 	//intialte dummy transmit to read the data
+	while (SPIF == 0);
+	Device_Id = SPI0DAT;						//read the data from flash
+
+	SPIF = 0;
+	SPI0DAT = SPI_DUMMY_DATA;					//intiate dummy transmit to read the data
+	while (SPIF == 0);
+	Device_Id = SPI0DAT | Device_Id<< 8;		//read the data from flash
+
+	if(!EnableDisableChipSelect(ChipSelect,DISABLE))   // select Flash
+		return 0;
+
+   Timer0_us (1);                      		// wait at least 500ns (CS disable
+                                       		// time)
+	if(Device_Id ==DEVICE_ID && Manfacturer_Id == MANUFACTURER_ID)
+		return 1; //flash sucess
+	else
+		return 0;
+}
+//Intialize the Serial Pheripheral Interface
+void Init_SPI( void )
+{
+   SFRPAGE = SPI0_PAGE;
+   SPI0CKR = 0x01; 					// 4Mhz speed // SYSCLK/48
+   SPI0CFG = 0x40; 					// master mode, CKPOL: low, CKPHA: second edge
+   SPI0CN  = 0x0D; 					// 4wire-single mast
+}
+//Check for free record 
+//return - free record index
+//return - -1 no records information
+char ReadDirectory()
+{
+	unsigned char Records;
+	unsigned char idata res;
+	for(Records=1;Records<=MAX_RECORDS;Records++)
+	{
+		FLASH_Read( DATA_RECORD_ADDRESS(Records),(char*) &stRecordReadInfo,sizeof(struct Record));
+		res = strncmp(stRecordReadInfo.Battery1Type,"ECT-",4);
+//		res &= strncmp(stRecordReadInfo.Battery1Type,"ECT-307",7); 
+		if(res) 
+		{
+			return Records;
+		}
+		else
+			continue;
+		
+	}
+	if(Records >= MAX_RECORDS)
+		return -1;
+	
+}
+//Read record from flash
+bit ReadFileFromFlash(unsigned char FileName,unsigned long Length)
+{
+	struct stFlash idata stFlashRead;
+
+	if(FileName <=32 && FileName >=1) //First Flash
+	{
+		if(gbDebugPort)
+			Put_String_UART1("\r\nChip 0 is Selected\r\n:");
+		stFlashRead.ChipSelect = CHIP0;
+	}
+	else if(FileName >32 && FileName <=64) //Second Flash
+	{
+		FileName -=32;
+		stFlashRead.ChipSelect = CHIP1;
+		if(gbDebugPort)
+			Put_String_UART1("\r\nChip 1 is Selected\r\n:");
+	}
+	if(!Read_Device_Id_Status(stFlashRead.ChipSelect))
+	{
+		if(gbDebugPort)
+			Put_String_UART1("\r\nPlease Insert Flash Card, Try again..");
+		LCDWriteLine(2,"Flash Card Error",2);
+		return 0;
+	}
+	
+	stFlashRead.Offset = 0;
+	if(gbDebugPort)
+		Put_String_UART1("\r\nRead Analog Data:");
+	stFlashRead.Address =FILE_NUMBER(FileName);
+	
+	while(Length)
+	{
+		if(Length >256)
+		{
+			Length -= 256;
+			stFlashRead.NoOfElements = 256; //sizeof(Read_Adc_Arr) ;// FILE_NUMBER(2)-256;
+		}
+		else
+		{
+			stFlashRead.NoOfElements = Length;
+			Length =0;
+		}
+		FlashRead(stFlashRead);
+		stFlashRead.Offset += 256L; //sizeof(Read_Adc_Arr);
+	}
+	return 1;
+}
+//Write record information to flash
+unsigned long  WriteFiletoFlash(unsigned long TotalRecords,unsigned char FileName)
+{
+	char SFRPAGE_SAVE;
+	float idata ADCVoltage;
+	struct stFlash idata stFlashWrite;
+	unsigned int  xdata Adc_Index;
+	unsigned long idata t1on=0,t1off=0;
+	unsigned int  xdata AdcChannel;
+	unsigned int idata ADC;
+	unsigned int idata Analogvoltage;
+
+	unsigned char xdata Buffer[22];
+
+	unsigned char Address= FileName;
+	unsigned int i;
+
+
+	SFRPAGE   = CONFIG_PAGE;
+
+	if(FileName <=32 && FileName >0) //Flash1 is selected
+	{
+		if(gbDebugPort)
+			Put_String_UART1("\r\nChip 0 is Selected\r\n:");
+		stFlashWrite.ChipSelect = CHIP0;
+	}
+	else if(FileName >32 && FileName <=64)  //Flash2 is selected
+	{
+		FileName -=32;
+		if(gbDebugPort)
+			Put_String_UART1("\r\nChip 1 is Selected\r\n:");
+		stFlashWrite.ChipSelect = CHIP1;
+	}
+	if(!Read_Device_Id_Status(stFlashWrite.ChipSelect))
+	{
+		if(gbDebugPort)
+			Put_String_UART1("\r\nPlease Insert Flash Card, Try again..");
+		LCDWriteLine(2,"Flash Card Error",2);
+		return 0;
+	}
+	stFlashWrite.Address =FILE_NUMBER(FileName);
+	stFlashWrite.NoOfElements = 256;
+	
+	START_SWITCH = 1;
+	stFlashWrite.Offset = 0;
+	GetTime_Date(&stTime);  					//read Time And Date
+	stRecordInfo.FileName = Address;  			//store FileName
+	stRecordInfo.Time.Seconds = stTime.Seconds;
+	stRecordInfo.Time.Minutes = stTime.Minutes;
+	stRecordInfo.Time.Hours   = stTime.Hours&0x3F;
+	stRecordInfo.Date.Year 	 = 0x2000+stTime.Year;
+	stRecordInfo.Date.Day	 = stTime.Date;
+	stRecordInfo.Date.Month	 = stTime.Month;
+	
+	FLASH_Read(RELAY_DATA_ADDRESS(BatteryIndex), (char*)&ReadRelayValues, sizeof(struct Relay));
+	strcpy(stRecordInfo.Battery1Type,ReadRelayValues.BatteryName);
+	stRecordInfo.FirstSection = ReadRelayValues.FirstSection;
+	stRecordInfo.SecondSection = ReadRelayValues.SecondSection;
+
+
+
+
+	if(!Remote)  //from lcd
+	{
+		stRecordInfo.IgnitionDuration = ReadRelayValues.IgnitionDuration;  // 
+		stRecordInfo.Testduration =ReadRelayValues.Testduration;
+		TestDuration =ReadRelayValues.Testduration*1000;
+	}
+	else  //from pc
+	{
+		TestDuration = stRecordInfo.Testduration*1000;
+
+	}
+	ReadRelayValues.IgnitionDuration *= 10; // added on 24-10-2006
+
+	Adc_Write_Index =0;
+	Adc_Read_Index = 0;
+	NoOfElementsToWrite=0;
+	stRecordInfo.NoOfBytes =0;
+	ullTimeInMilliseconds =0;
+	SFRPAGE_SAVE = SFRPAGE;
+	SFRPAGE = ADC0_PAGE;
+	AMX0SL =0;
+//	Adc_Index =0;
+	SFRPAGE = SFRPAGE_SAVE;
+
+
+
+	Adc_Index =0;
+
+	FLASH_PageErase(DATA_RECORD_ADDRESS(Address));
+	ENABLE_INT0_INTERRUPT();//ENABLE THE EDGE TRIGGERED INTO INTERRUPT
+	IGNITER_ENABLE = 0;
+	READY_LED = 1;
+	IgniterFlag = 0;
+	while(!IgniterFlag);   //check igniter button START_SWITCH
+	IgniterFlag =0;	
+	READY_LED = 0;
+	START_SWITCH = 0;
+	PutStringOnRS232(TESTSTARTED); //ADDED ON 20 JULY 06
+	LCDWriteLine(1,"                    ",2);
+	LCDWriteLine(2,"  TEST IN PROGRESS  ",2);
+
+	if(stRecordInfo.FirstSection > 0 && stRecordInfo.FirstSection < 4)
+	{
+        sprintf(TmpBuffer, "SECTION %d : ", (unsigned int)stRecordInfo.FirstSection);
+		LCDWriteLine(3, TmpBuffer, 0);
+	}
+
+	if(stRecordInfo.SecondSection > 0 && stRecordInfo.SecondSection < 4)
+	{
+        sprintf(TmpBuffer, "SECTION %d : ", (unsigned int)stRecordInfo.SecondSection);
+		LCDWriteLine(4, TmpBuffer, 0);
+	}
+
+
+
+
+	DISABLE_INT0_INTERRUPT();   //disable interrupt
+
+	SFRPAGE_SAVE = SFRPAGE;
+	SFRPAGE = TMR4_PAGE;
+	TMR4CN    = 0x04;  			//run Timer4  ,auto reload mode
+	SFRPAGE = SFRPAGE_SAVE;
+	SFRPAGE_SAVE = SFRPAGE;
+
+	NoOfElementsToWrite=0;
+	stRecordInfo.NoOfBytes =0;
+	AdcChannel = 0;
+
+	while(TestDuration)
+	{
+	#ifdef EXTERNAL_ADC
+		SFRPAGE   = CONFIG_PAGE;/* Set SFR Page to 00 */ 	
+
+		switch(AdcChannel)
+		{
+			case 0: //Channel 0 selected
+				SFRPAGE   = CONFIG_PAGE;
+				A0 = 0;
+				A1 = 0; 
+			break;
+			case 1: //Channel 1 selected
+				SFRPAGE   = CONFIG_PAGE;		
+				A0 = 1;
+				A1 = 0;
+			break;
+			case 2:	//Channel 2 selected
+				SFRPAGE   = CONFIG_PAGE;		
+				A0 = 0;
+				A1 = 1;
+			break;
+			case 3: //Channel 3 selected
+				SFRPAGE   = CONFIG_PAGE;
+				A0 = 1;
+				A1 = 1;
+			break;
+		}
+
+
+		SFRPAGE   = CONFIG_PAGE;/* Set SFR Page to 00 */ 
+		ADC = 0;
+		Analogvoltage=0;
+
+		EA = 0;			
+		Analogvoltage= ReadADCData();
+//			sprintf(Buffer,"%d, %04x\r\n",AdcChannel,Analogvoltage);
+//			PutStringOnRS232(Buffer);
+			//delay(0x1ff);
+			delay(0xf);
+		for(i=0;i<NO_OF_SAMPLES_FOR_AVERAGING-1;i++)
+		{
+		   	ADC = ReadADCData();	
+//			sprintf(Buffer,"%d, %04x\r\n",AdcChannel,Analogvoltage);
+//			PutStringOnRS232(Buffer);
+			//delay(0x1ff);
+//			delay(0xf);
+			Analogvoltage = (ADC >> 1) + (Analogvoltage >> 1);
+		}
+	    EA = 1;				
+
+
+
+//			sprintf(Buffer,"%d, %04x\r\n",AdcChannel,Analogvoltage);
+//			PutStringOnRS232(Buffer);
+		
+
+
+		ADCCh[Adc_Write_Index] = Analogvoltage;
+		NoOfElementsToWrite++;
+  		Adc_Write_Index++;               // reset accumulator
+  		if(Adc_Write_Index == ADC_MAX_BUFF_SIZE)
+  			Adc_Write_Index = 0;		
+		
+		AdcChannel++;
+		if(AdcChannel == 4)
+			AdcChannel = 0;
+
+	
+	#endif 
+
+		SFRPAGE_SAVE  = SFRPAGE;
+		SFRPAGE = CONFIG_PAGE;
+		DAQ_LED =1;
+		if(NoOfElementsToWrite >=ADC_MAX_BUFF_SIZE)
+			LCDWriteLine(2,"ADC BUFFER OVERFLOW",2);
+		SFRPAGE = SFRPAGE_SAVE;
+		if(NoOfElementsToWrite >=128)
+		{
+			stFlashWrite.NoOfElements = 128; //PAGE_SIZE_WRITE; //32; //32*8   256; 
+			FlashWrite(stFlashWrite);
+			stFlashWrite.Offset += 256; 
+			NoOfElementsToWrite -=128;
+			stRecordInfo.NoOfBytes +=128; 
+		}
+
+
+
+		if(NoOfElementsToWrite >=4)
+		{
+			Adc_Index =  Adc_Write_Index;
+			if((Adc_Index%4) == 0)
+			{
+				
+				if(Adc_Index >0)
+				{
+					if(stRecordInfo.FirstSection > 0 && stRecordInfo.FirstSection < 4)
+					{
+						ADCVoltage = (ADCCh[Adc_Index - (5-SectionsMapping[stRecordInfo.FirstSection-1])] *ADC_RES_TEN_VOLTS*CHANNEL_POSITIVE_SCALE);   // TESTADC
+						if(ADCVoltage > 40) 
+						{
+							ADCVoltage = (ADCCh[Adc_Index - (5-SectionsMapping[stRecordInfo.FirstSection-1])] *ADC_RES_TEN_VOLTS*CHANNEL_NEGATIVE_SCALE);   // TESTADC
+							LCDGotoXY(13,3);
+							sprintf(Buffer,"%04.1fV   ",(40-ADCVoltage)+CHANNEL_NEGATIVE_OFFSET);
+							LCDPutText(Buffer);
+						}
+						else
+						{
+							ADCVoltage = (ADCCh[Adc_Index - (5-SectionsMapping[stRecordInfo.FirstSection-1])] *ADC_RES_TEN_VOLTS*CHANNEL_POSITIVE_SCALE);   // TESTADC
+							LCDGotoXY(13,3);
+							sprintf(Buffer,"%04.1fV   ",(ADCVoltage-CHANNEL_POSITIVE_OFFSET));
+							LCDPutText(Buffer);
+						}
+					}
+					if(stRecordInfo.SecondSection > 0 && stRecordInfo.SecondSection < 4)
+					{
+						ADCVoltage = ADCCh[Adc_Index - (5-SectionsMapping[stRecordInfo.SecondSection-1])] *ADC_RES_TEN_VOLTS*CHANNEL_POSITIVE_SCALE;  // TESTADC
+						if(ADCVoltage > 40) 
+						{
+							ADCVoltage = ADCCh[Adc_Index - (5-SectionsMapping[stRecordInfo.SecondSection-1])] *ADC_RES_TEN_VOLTS*CHANNEL_NEGATIVE_SCALE;  // TESTADC
+							LCDGotoXY(13,4);
+							sprintf(Buffer,"%04.1fV   ",(40-ADCVoltage)+CHANNEL_NEGATIVE_OFFSET);
+							LCDPutText(Buffer);
+						}
+						else
+						{
+							ADCVoltage = (ADCCh[Adc_Index - (5-SectionsMapping[stRecordInfo.SecondSection-1])] *ADC_RES_TEN_VOLTS*CHANNEL_POSITIVE_SCALE);   // TESTADC
+							LCDGotoXY(13,4);
+							sprintf(Buffer,"%04.1fV   ",ADCVoltage-CHANNEL_POSITIVE_OFFSET);
+							LCDPutText(Buffer);
+						}
+					}
+				}
+				else
+				{
+					if(stRecordInfo.FirstSection > 0 && stRecordInfo.FirstSection < 4)
+					{
+						ADCVoltage = ADCCh[Adc_Index+ADC_MAX_BUFF_SIZE -(5-SectionsMapping[stRecordInfo.FirstSection-1])] *ADC_RES_TEN_VOLTS*CHANNEL_POSITIVE_SCALE;
+						LCDGotoXY(13,3);
+						sprintf(Buffer,"%04.1fV   ",ADCVoltage);
+						LCDPutChar(Buffer[0]);
+						LCDPutChar(Buffer[1]);
+						LCDPutChar(Buffer[2]);
+						LCDPutChar(Buffer[3]);
+					}
+
+					if(stRecordInfo.SecondSection > 0 && stRecordInfo.SecondSection < 4)
+					{
+						ADCVoltage = ADCCh[Adc_Index+ADC_MAX_BUFF_SIZE -(5-SectionsMapping[stRecordInfo.SecondSection-1])] *ADC_RES_TEN_VOLTS*CHANNEL_POSITIVE_SCALE;
+						LCDGotoXY(13,4);
+						sprintf(Buffer,"%04.1fV   ",ADCVoltage);
+						LCDPutChar(Buffer[0]);
+						LCDPutChar(Buffer[1]);
+						LCDPutChar(Buffer[2]);
+						LCDPutChar(Buffer[3]);
+					}
+				}
+			}
+		}
+	}
+	K1RELAY 	= 0;  
+	PULSE_RELAY = 0;
+	DAQ_LED 	= 0;
+	SOLID_STATE_RELAY =0;
+	IGNITER_ENABLE  =1;
+	stRecordInfo.NoOfBytes +=NoOfElementsToWrite;
+	SFRPAGE_SAVE = SFRPAGE;
+
+	SFRPAGE = TMR4_PAGE;
+	TR4    = 0;  			//run Timer4  ,auto reload mode
+	SFRPAGE = SFRPAGE_SAVE;
+	while(NoOfElementsToWrite >0)
+	{
+												//remaining elements to write to flash
+		if(NoOfElementsToWrite <=128)
+		{
+			// commented by Madhu on 18072006 to resolve excess data at the end
+			//stRecordInfo.NoOfBytes +=NoOfElementsToWrite; 
+			stFlashWrite.NoOfElements =NoOfElementsToWrite; // NoOfElementsToWrite; 
+			NoOfElementsToWrite = 0;
+			FlashWrite(stFlashWrite);
+		}
+		else
+		{
+			NoOfElementsToWrite -=128;
+			stFlashWrite.NoOfElements =128;
+			FlashWrite(stFlashWrite);
+			stFlashWrite.Offset += 256; 
+		}
+
+	}
+	FLASH_Write (DATA_RECORD_ADDRESS(Address), (char*) &stRecordInfo,sizeof(struct Record));
+	NoOfElementsToWrite =0;
+	RecordsUsed++;
+	FreeRecords--;
+	return TotalRecords;
+}
+
+//Erase records from flash
+char EraseRecords(unsigned char FileName,unsigned char Count)
+{
+	struct stFlash Flash;
+	unsigned char SectorNumber;
+	Flash.SectorNumber =((FileName*2)-2);
+	SectorNumber =Flash.SectorNumber;
+	while(Count--)
+	{
+		
+		if(SectorNumber >63 && SectorNumber <128)
+		{
+			Flash.ChipSelect =1;
+			Flash.SectorNumber =SectorNumber-64;
+			if(gbDebugPort)
+				Put_String_UART1("Chip 2 is selected for Erasing\r\n");
+		}
+		else if(SectorNumber <=63)
+			Flash.ChipSelect =0;
+
+		else
+		{
+			LCDWriteLine(4,"Invalid SectNo",2);
+			if(gbDebugPort)
+				Put_String_UART1("Invalid Sector Number\r\n");
+			return -1;
+			//Invalid Sector Number
+		} 
+		if(!Read_Device_Id_Status(Flash.ChipSelect))
+		{
+			if(gbDebugPort)
+				Put_String_UART1("Please Insert Flash Card, Try again..\r\n");
+			LCDWriteLine(3,"Flash error",2);
+			return 0;
+		}
+
+		FlashSectorErase(Flash);
+		Flash.SectorNumber++;
+		SectorNumber++;
+		FlashSectorErase(Flash);
+		FLASH_PageErase(DATA_RECORD_ADDRESS(FileName));
+		Flash.SectorNumber++;
+		SectorNumber++;
+		FileName++;
+		if(RecordsUsed)
+		{
+			FreeRecords++;  		//Free records 
+			RecordsUsed--;
+		}
+	}
+	if(gbDebugPort)
+		Put_String_UART1("Erase Success\r\n");
+	return 0;
+}
+
